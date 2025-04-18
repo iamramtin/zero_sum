@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-zero_sum = "coUnmi3oBUtwtd9fjeAvSsJssXh5A5xyPbhpewyzRVF"
+zero_sum = "Cy59cDTqWRNtNF2x7ESkB1vEuSV2uLW85en5Ph7h1LrU"
 
 [registry]
 url = "https://api.apr.dev"
