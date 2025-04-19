@@ -8,33 +8,22 @@
   },
   "instructions": [
     {
-      "name": "price_feed",
-      "discriminator": [146, 197, 37, 70, 210, 196, 173, 100],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "price_update"
-        }
+      "name": "check_price_movement",
+      "discriminator": [
+        254,
+        59,
+        192,
+        234,
+        11,
+        116,
+        117,
+        203
       ],
-      "args": []
-    },
-    {
-      "name": "send",
-      "discriminator": [102, 251, 20, 187, 65, 75, 12, 69],
       "accounts": [
         {
           "name": "payer",
           "writable": true,
           "signer": true
-        },
-        {
-          "name": "destination",
-          "docs": ["CHECK : Just a destination"],
-          "writable": true
         },
         {
           "name": "price_update"
@@ -46,24 +35,105 @@
       ],
       "args": [
         {
-          "name": "amount_in_usd",
-          "type": "u64"
+          "name": "base_price",
+          "type": "i64"
+        },
+        {
+          "name": "base_exponent",
+          "type": "i32"
+        },
+        {
+          "name": "percentage",
+          "type": "f64"
         }
       ]
     },
     {
-      "name": "send_using_twap",
-      "discriminator": [24, 255, 70, 199, 23, 25, 63, 114],
+      "name": "close_game",
+      "discriminator": [
+        237,
+        236,
+        157,
+        201,
+        253,
+        20,
+        248,
+        67
+      ],
       "accounts": [
         {
-          "name": "payer",
+          "name": "winner",
           "writable": true,
           "signer": true
         },
         {
-          "name": "destination",
-          "docs": ["CHECK : Just a destination"],
+          "name": "winner_token_account",
           "writable": true
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
         },
         {
           "name": "twap_update"
@@ -71,68 +141,751 @@
         {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
         {
-          "name": "amount_in_usd",
+          "name": "game_id",
           "type": "u64"
         },
         {
-          "name": "twap_window_seconds",
-          "type": "u64"
+          "name": "initiator",
+          "type": "pubkey"
         }
       ]
+    },
+    {
+      "name": "create_game",
+      "discriminator": [
+        124,
+        69,
+        75,
+        66,
+        184,
+        220,
+        72,
+        206
+      ],
+      "accounts": [
+        {
+          "name": "initiator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "initiator_token_account",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_update"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "game_id",
+          "type": "u64"
+        },
+        {
+          "name": "prediction",
+          "type": {
+            "defined": {
+              "name": "PricePrediction"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "start_game",
+      "discriminator": [
+        249,
+        47,
+        252,
+        172,
+        184,
+        162,
+        245,
+        14
+      ],
+      "accounts": [
+        {
+          "name": "challenger",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "challenger_token_account",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_update"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "initiator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "initiator_token_account",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "initiator"
+              },
+              {
+                "kind": "account",
+                "path": "game_state.game_id",
+                "account": "GameState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "initiator"
+              },
+              {
+                "kind": "account",
+                "path": "game_state.game_id",
+                "account": "GameState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
     {
+      "name": "GameState",
+      "discriminator": [
+        144,
+        94,
+        208,
+        172,
+        248,
+        99,
+        134,
+        120
+      ]
+    },
+    {
       "name": "PriceUpdateV2",
-      "discriminator": [34, 241, 35, 99, 157, 126, 244, 205]
+      "discriminator": [
+        34,
+        241,
+        35,
+        99,
+        157,
+        126,
+        244,
+        205
+      ]
     },
     {
       "name": "TwapUpdate",
-      "discriminator": [104, 192, 188, 72, 246, 166, 12, 81]
+      "discriminator": [
+        104,
+        192,
+        188,
+        72,
+        246,
+        166,
+        12,
+        81
+      ]
     }
   ],
   "events": [
     {
+      "name": "GameClosed",
+      "discriminator": [
+        178,
+        203,
+        179,
+        224,
+        43,
+        18,
+        209,
+        4
+      ]
+    },
+    {
+      "name": "GameCreated",
+      "discriminator": [
+        218,
+        25,
+        150,
+        94,
+        177,
+        112,
+        96,
+        2
+      ]
+    },
+    {
+      "name": "GameStarted",
+      "discriminator": [
+        222,
+        247,
+        78,
+        255,
+        61,
+        184,
+        156,
+        41
+      ]
+    },
+    {
+      "name": "GameWithdraw",
+      "discriminator": [
+        22,
+        161,
+        222,
+        68,
+        51,
+        239,
+        167,
+        132
+      ]
+    },
+    {
       "name": "PriceFetched",
-      "discriminator": [207, 104, 233, 65, 92, 239, 79, 86]
+      "discriminator": [
+        207,
+        104,
+        233,
+        65,
+        92,
+        239,
+        79,
+        86
+      ]
+    },
+    {
+      "name": "PriceMovementChecked",
+      "discriminator": [
+        98,
+        233,
+        23,
+        26,
+        198,
+        1,
+        5,
+        63
+      ]
     },
     {
       "name": "TransferExecuted",
-      "discriminator": [8, 128, 224, 132, 112, 216, 192, 35]
+      "discriminator": [
+        8,
+        128,
+        224,
+        132,
+        112,
+        216,
+        192,
+        35
+      ]
     }
   ],
   "errors": [
     {
       "code": 6000,
-      "name": "InvalidPriceFeed",
-      "msg": "The Pyth price feed account is invalid."
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
     },
     {
       "code": 6001,
-      "name": "StalePriceFeed",
-      "msg": "The Pyth price feed is stale."
+      "name": "NotInitiator",
+      "msg": "Only the initiator can withdraw from this game"
     },
     {
       "code": 6002,
-      "name": "MathOverflow",
-      "msg": "Arithmetic overflow occurred during a calculation."
+      "name": "StalePriceFeed",
+      "msg": "The price feed data is stale or unavailable"
     },
     {
       "code": 6003,
-      "name": "InvalidPriceValue",
-      "msg": "Invalid price value conversion."
+      "name": "InvalidTokenAccount",
+      "msg": "Invalid token account"
     },
     {
       "code": 6004,
-      "name": "UnsupportedPositiveExponent",
-      "msg": "Positive exponent values are not supported."
+      "name": "InvalidTokenMint",
+      "msg": "Token mint must be USDC"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidPriceValue",
+      "msg": "Invalid price value received from oracle"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidPrediction",
+      "msg": "Prediction must be 'Increase' or 'Decrease'"
+    },
+    {
+      "code": 6007,
+      "name": "IncorrectInitiator",
+      "msg": "Incorrect initiator address provided"
+    },
+    {
+      "code": 6008,
+      "name": "IncorrectGameId",
+      "msg": "Incorrect game ID provided"
+    },
+    {
+      "code": 6009,
+      "name": "GameNotActive",
+      "msg": "Game does not exist or has not been properly initialized"
+    },
+    {
+      "code": 6010,
+      "name": "GameAlreadyEnded",
+      "msg": "This game has already been completed or cancelled"
+    },
+    {
+      "code": 6011,
+      "name": "GameAlreadyFull",
+      "msg": "This game already has two players"
+    },
+    {
+      "code": 6012,
+      "name": "WithdrawalBlocked",
+      "msg": "Withdrawal not allowed after a challenger has joined"
+    },
+    {
+      "code": 6013,
+      "name": "ExcessivePriceVolatility",
+      "msg": "Cannot join - price has moved more than 1% since creation"
+    },
+    {
+      "code": 6014,
+      "name": "ThresholdNotReached",
+      "msg": "Neither price threshold has been reached yet"
+    },
+    {
+      "code": 6015,
+      "name": "CannotJoinOwnGame",
+      "msg": "Cannot join your own game"
     }
   ],
   "types": [
+    {
+      "name": "GameClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "winner",
+            "type": "pubkey"
+          },
+          {
+            "name": "final_price",
+            "type": "i64"
+          },
+          {
+            "name": "formatted_final_price",
+            "type": "f64"
+          },
+          {
+            "name": "price_movement_percentage",
+            "type": "f64"
+          },
+          {
+            "name": "winning_prediction",
+            "type": {
+              "defined": {
+                "name": "PricePrediction"
+              }
+            }
+          },
+          {
+            "name": "total_payout",
+            "type": "u64"
+          },
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "initiator",
+            "type": "pubkey"
+          },
+          {
+            "name": "prediction",
+            "type": {
+              "defined": {
+                "name": "PricePrediction"
+              }
+            }
+          },
+          {
+            "name": "initial_price",
+            "type": "i64"
+          },
+          {
+            "name": "formatted_price",
+            "type": "f64"
+          },
+          {
+            "name": "exponent",
+            "type": "i32"
+          },
+          {
+            "name": "entry_amount",
+            "type": "u64"
+          },
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameStarted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenger",
+            "type": "pubkey"
+          },
+          {
+            "name": "challenger_prediction",
+            "type": {
+              "defined": {
+                "name": "PricePrediction"
+              }
+            }
+          },
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameState",
+      "docs": [
+        "* ACCOUNTS"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "initiator",
+            "type": "pubkey"
+          },
+          {
+            "name": "initiator_prediction",
+            "type": {
+              "defined": {
+                "name": "PricePrediction"
+              }
+            }
+          },
+          {
+            "name": "challenger",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "entry_amount",
+            "type": "u64"
+          },
+          {
+            "name": "initial_price",
+            "type": "i64"
+          },
+          {
+            "name": "price_exponent",
+            "type": "i32"
+          },
+          {
+            "name": "creation_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "start_timestamp",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "cancelled_timestamp",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameWithdraw",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "end_timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
     {
       "name": "PriceFeedMessage",
       "repr": {
@@ -147,7 +900,10 @@
               "`FeedId` but avoid the type alias because of compatibility issues with Anchor's `idl-build` feature."
             ],
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           },
           {
@@ -164,7 +920,9 @@
           },
           {
             "name": "publish_time",
-            "docs": ["The timestamp of this price update in seconds"],
+            "docs": [
+              "The timestamp of this price update in seconds"
+            ],
             "type": "i64"
           },
           {
@@ -198,7 +956,9 @@
     },
     {
       "name": "PriceFetched",
-      "docs": ["* EVENTS"],
+      "docs": [
+        "* EVENTS"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -213,6 +973,59 @@
           {
             "name": "exponent",
             "type": "i32"
+          },
+          {
+            "name": "formatted_price",
+            "type": "f64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PriceMovementChecked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "base_price",
+            "type": "i64"
+          },
+          {
+            "name": "current_price",
+            "type": "i64"
+          },
+          {
+            "name": "exponent",
+            "type": "i32"
+          },
+          {
+            "name": "percentage",
+            "type": "f64"
+          },
+          {
+            "name": "increased",
+            "type": "bool"
+          },
+          {
+            "name": "decreased",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PricePrediction",
+      "docs": [
+        "* ENUM"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Increase"
+          },
+          {
+            "name": "Decrease"
           }
         ]
       }
@@ -285,7 +1098,10 @@
           {
             "name": "feed_id",
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           },
           {

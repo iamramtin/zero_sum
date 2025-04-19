@@ -1,18 +1,16 @@
 #![allow(clippy::result_large_err)]
 
 use anchor_lang::{prelude::*, Discriminator};
-use pyth_solana_receiver_sdk::price_update::{PriceUpdateV2, TwapUpdate};
+use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
+use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2, TwapUpdate};
 
 declare_id!("Cy59cDTqWRNtNF2x7ESkB1vEuSV2uLW85en5Ph7h1LrU");
 
-// get_price_no_older_than will fail if the price update is more than this
-pub const MAXIMUM_AGE: u64 = 30; // 30 sec
-
-// Feeds from https://pyth.network/developers/price-feed-ids
-pub const ETH_USD_FEED_ID: &str =
-    "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace";
-
-pub mod game_constants {
+pub mod constants {
+    // Feeds from https://pyth.network/developers/price-feed-ids
+    pub const ETH_USD_PRICE_ID: &str =
+        "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace";
+    pub const PRICE_MAXIMUM_AGE: u64 = 30; // 30 sec maximum age of on-chain price
     pub const ENTRY_AMOUNT_USDC: u64 = 1_000_000_000; // 1000 USDC (with 6 decimals)
     pub const MAX_JOIN_PRICE_MOVEMENT: f64 = 0.01; // 1% max change for joining
     pub const WIN_PRICE_THRESHOLD: f64 = 0.05; // 5% movement for win
@@ -21,8 +19,6 @@ pub mod game_constants {
 
 #[program]
 pub mod zero_sum {
-    use pyth_solana_receiver_sdk::price_update::get_feed_id_from_hex;
-
     use super::*;
 
     // Helper function to check if price has moved by percentage
@@ -34,12 +30,9 @@ pub mod zero_sum {
     ) -> Result<()> {
         let price_update = &mut ctx.accounts.price_update;
 
-        // Get the feed ID for ETH/USD
-        let feed_id = get_feed_id_from_hex(ETH_USD_FEED_ID)?;
-
-        // Get current price
+        let feed_id = get_feed_id_from_hex(constants::ETH_USD_PRICE_ID)?;
         let current_price = price_update
-            .get_price_no_older_than(&Clock::get()?, MAXIMUM_AGE, &feed_id)
+            .get_price_no_older_than(&Clock::get()?, constants::PRICE_MAXIMUM_AGE, &feed_id)
             .map_err(|_| CustomError::StalePriceFeed)?;
 
         // Check price movement
@@ -50,7 +43,6 @@ pub mod zero_sum {
             percentage,
         )?;
 
-        // Emit price movement event
         emit!(PriceMovementChecked {
             base_price,
             current_price: current_price.price,
@@ -81,9 +73,9 @@ pub mod zero_sum {
         let current_time = Clock::get()?;
 
         // Get current ETH price
-        let feed_id = get_feed_id_from_hex(ETH_USD_FEED_ID)?;
+        let feed_id = get_feed_id_from_hex(constants::ETH_USD_PRICE_ID)?;
         let price = price_update
-            .get_price_no_older_than(&current_time, MAXIMUM_AGE, &feed_id)
+            .get_price_no_older_than(&current_time, constants::PRICE_MAXIMUM_AGE, &feed_id)
             .map_err(|_| CustomError::StalePriceFeed)?;
 
         emit!(PriceFetched {
@@ -94,24 +86,37 @@ pub mod zero_sum {
         });
 
         game_state.game_id = game_id;
-        game_state.initiator = ctx.accounts.player.key();
+        game_state.initiator = ctx.accounts.initiator.key();
         game_state.initiator_prediction = prediction;
-        game_state.entry_amount = game_constants::ENTRY_AMOUNT_USDC;
+        game_state.entry_amount = constants::ENTRY_AMOUNT_USDC;
         game_state.initial_price = price.price;
         game_state.price_exponent = price.exponent;
         game_state.creation_timestamp = current_time.unix_timestamp;
         game_state.bump = ctx.bumps.game_state;
 
-        // TODO: Handle USDC transfer from player to escrow / vault account
-        // [USDC transfer code will go here]
+        // Transfer entry amount into escrow / vault account
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_accounts = TransferChecked {
+            from: ctx.accounts.initiator_token_account.to_account_info(),
+            to: ctx.accounts.vault.to_account_info(),
+            mint: ctx.accounts.usdc_mint.to_account_info(),
+            authority: ctx.accounts.initiator.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+
+        token::transfer_checked(
+            cpi_ctx,
+            game_state.entry_amount,
+            ctx.accounts.usdc_mint.decimals,
+        )?;
 
         emit!(GameCreated {
-            initiator: *ctx.accounts.player.key,
+            initiator: *ctx.accounts.initiator.key,
             prediction,
             initial_price: price.price,
             formatted_price: format_price(price.price, price.exponent),
             exponent: price.exponent,
-            entry_amount: game_constants::ENTRY_AMOUNT_USDC,
+            entry_amount: constants::ENTRY_AMOUNT_USDC,
             game_id: ctx.accounts.game_state.game_id,
             timestamp: current_time.unix_timestamp,
         });
@@ -125,9 +130,9 @@ pub mod zero_sum {
         let game_state = &mut ctx.accounts.game_state;
         let price_update = &mut ctx.accounts.price_update;
 
-        require!(game_state.is_ended(), CustomError::GameAlreadyEnded);
+        require!(!game_state.is_ended(), CustomError::GameAlreadyEnded);
         require!(
-            !game_state.is_initiator(ctx.accounts.player.key()),
+            !game_state.is_initiator(ctx.accounts.challenger.key()),
             CustomError::CannotJoinOwnGame
         );
         require!(game_state.joinable_game(), CustomError::GameAlreadyFull);
@@ -135,9 +140,9 @@ pub mod zero_sum {
         let current_time = Clock::get()?;
 
         // Get current ETH price
-        let feed_id = get_feed_id_from_hex(ETH_USD_FEED_ID)?;
+        let feed_id = get_feed_id_from_hex(constants::ETH_USD_PRICE_ID)?;
         let price = price_update
-            .get_price_no_older_than(&current_time, MAXIMUM_AGE, &feed_id)
+            .get_price_no_older_than(&current_time, constants::PRICE_MAXIMUM_AGE, &feed_id)
             .map_err(|_| CustomError::StalePriceFeed)?;
 
         emit!(PriceFetched {
@@ -151,7 +156,7 @@ pub mod zero_sum {
             game_state.initial_price,
             price.price,
             game_state.price_exponent,
-            game_constants::MAX_JOIN_PRICE_MOVEMENT,
+            constants::MAX_JOIN_PRICE_MOVEMENT,
         )?;
 
         require!(
@@ -159,16 +164,29 @@ pub mod zero_sum {
             CustomError::ExcessivePriceVolatility
         );
 
-        game_state.challenger = Some(ctx.accounts.player.key());
+        game_state.challenger = Some(ctx.accounts.challenger.key());
         game_state.start_timestamp = Some(current_time.unix_timestamp);
 
-        // TODO: Handle USDC transfer from player to escrow / vault account
-        // [USDC transfer code will go here]
+        // Transfer entry amount into escrow / vault account
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_accounts = TransferChecked {
+            from: ctx.accounts.challenger_token_account.to_account_info(),
+            to: ctx.accounts.vault.to_account_info(),
+            mint: ctx.accounts.usdc_mint.to_account_info(),
+            authority: ctx.accounts.challenger.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+
+        token::transfer_checked(
+            cpi_ctx,
+            game_state.entry_amount,
+            ctx.accounts.usdc_mint.decimals,
+        )?;
 
         let challenger_prediction = game_state.get_challenger_prediction();
 
         emit!(GameStarted {
-            challenger: *ctx.accounts.player.key,
+            challenger: *ctx.accounts.challenger.key,
             challenger_prediction,
             game_id: ctx.accounts.game_state.game_id,
             timestamp: current_time.unix_timestamp,
@@ -176,8 +194,8 @@ pub mod zero_sum {
         Ok(())
     }
 
-    // Ends game when price change is met
-    pub fn close_game(ctx: Context<CloseGame>) -> Result<()> {
+    // Ends game when price movement is met
+    pub fn close_game(ctx: Context<CloseGame>, game_id: u64, initiator: Pubkey) -> Result<()> {
         let game_state = &mut ctx.accounts.game_state;
         let twap_update = &ctx.accounts.twap_update;
 
@@ -186,17 +204,16 @@ pub mod zero_sum {
         let current_time = Clock::get()?;
 
         // Get current ETH price
-        let feed_id = get_feed_id_from_hex(ETH_USD_FEED_ID)?;
+        let feed_id = get_feed_id_from_hex(constants::ETH_USD_PRICE_ID)?;
         let price = twap_update
             .get_twap_no_older_than(
                 &current_time,
-                MAXIMUM_AGE,
-                game_constants::TWAP_WINDOW_SECONDS,
+                constants::PRICE_MAXIMUM_AGE,
+                constants::TWAP_WINDOW_SECONDS,
                 &feed_id,
             )
             .map_err(|_| CustomError::StalePriceFeed)?;
 
-        // Emit the TWAP price data
         emit!(PriceFetched {
             price: price.price,
             conf: price.conf,
@@ -208,7 +225,7 @@ pub mod zero_sum {
             game_state.initial_price,
             price.price,
             game_state.price_exponent,
-            game_constants::WIN_PRICE_THRESHOLD,
+            constants::WIN_PRICE_THRESHOLD,
         )?;
 
         // Verify a winner exists
@@ -223,12 +240,39 @@ pub mod zero_sum {
             game_state.challenger.unwrap()
         };
 
-        // TODO: Transfer all USDC to winner
-        // [USDC transfer code will go here]
+        require!(
+            ctx.accounts.winner.key() == winner,
+            CustomError::NotTheWinner
+        );
 
         // Mark game as completed
         let game_state = &mut ctx.accounts.game_state;
         game_state.end_timestamp = Some(current_time.unix_timestamp);
+
+        // Transfer the full balance (both players' stakes) to the winner
+        let seeds = &[
+            b"game_state",
+            initiator.as_ref(),
+            &game_id.to_le_bytes(),
+            &[game_state.bump],
+        ];
+        let signer = &[&seeds[..]];
+
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_accounts = TransferChecked {
+            from: ctx.accounts.vault.to_account_info(),
+            to: ctx.accounts.winner_token_account.to_account_info(),
+            mint: ctx.accounts.usdc_mint.to_account_info(),
+            authority: game_state.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
+
+        let total_payout = game_state
+            .entry_amount
+            .checked_mul(2)
+            .ok_or(error!(CustomError::Overflow))?;
+
+        token::transfer_checked(cpi_ctx, total_payout, ctx.accounts.usdc_mint.decimals)?;
 
         // TODO: replace with safer arithmetic and error handling
         let initial_price_value =
@@ -243,13 +287,6 @@ pub mod zero_sum {
             PricePrediction::Decrease
         };
 
-        let total_payout = ctx
-            .accounts
-            .game_state
-            .entry_amount
-            .checked_mul(2)
-            .ok_or(error!(CustomError::Overflow))?;
-
         emit!(GameClosed {
             winner,
             final_price: price.price,
@@ -260,6 +297,7 @@ pub mod zero_sum {
             game_id: ctx.accounts.game_state.game_id,
             timestamp: current_time.unix_timestamp,
         });
+
         Ok(())
     }
 
@@ -269,7 +307,7 @@ pub mod zero_sum {
         let game_state = &mut ctx.accounts.game_state;
 
         require!(
-            game_state.is_initiator(ctx.accounts.player.key()),
+            game_state.is_initiator(ctx.accounts.initiator.key()),
             CustomError::NotInitiator
         );
         require!(!game_state.is_ended(), CustomError::GameAlreadyEnded);
@@ -277,10 +315,34 @@ pub mod zero_sum {
 
         let current_time = Clock::get()?;
 
+        game_state.cancelled_timestamp = Some(current_time.unix_timestamp);
         game_state.end_timestamp = Some(current_time.unix_timestamp);
 
+        let seeds = &[
+            b"game_state",
+            game_state.initiator.as_ref(),
+            &game_state.game_id.to_le_bytes(),
+            &[game_state.bump],
+        ];
+        let signer = &[&seeds[..]];
+
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_accounts = TransferChecked {
+            from: ctx.accounts.vault.to_account_info(),
+            to: ctx.accounts.initiator_token_account.to_account_info(),
+            mint: ctx.accounts.usdc_mint.to_account_info(),
+            authority: game_state.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
+
+        token::transfer_checked(
+            cpi_ctx,
+            game_state.entry_amount,
+            ctx.accounts.usdc_mint.decimals,
+        )?;
+
         emit!(GameWithdraw {
-            end_timestamp: current_time.unix_timestamp,
+            cancelled_timestamp: current_time.unix_timestamp,
         });
 
         Ok(())
@@ -305,31 +367,72 @@ pub struct CheckPriceMovement<'info> {
 #[instruction(game_id: u64)]
 pub struct CreateGame<'info> {
     #[account(mut)]
-    pub player: Signer<'info>,
+    pub initiator: Signer<'info>,
 
-    pub price_update: Account<'info, PriceUpdateV2>,
+    // USDC token account of the initiator (must be passed in)
+    #[account(
+        mut,
+        constraint = initiator_token_account.owner == initiator.key() @ CustomError::InvalidTokenAccount,
+        constraint = initiator_token_account.mint == usdc_mint.key() @ CustomError::InvalidTokenMint,
+    )]
+    pub initiator_token_account: Account<'info, TokenAccount>,
+
+    pub usdc_mint: Account<'info, Mint>, // USDC mint account (for verification)
+
+    // The vault token account for this specific game
+    // Ensures USDC tokens can only be distributed according to the program's logic.
+    #[account(
+        init,
+        payer = initiator,
+        token::mint = usdc_mint,
+        token::authority = game_state, // PDA as authority
+        seeds = [b"game_vault", initiator.key().as_ref(), &game_id.to_le_bytes()],
+        bump
+    )]
+    pub vault: Account<'info, TokenAccount>,
 
     #[account(
         init,
-        payer = player,
+        payer = initiator,
         space = GameState::DISCRIMINATOR.len() + GameState::INIT_SPACE,
-        seeds = [b"game_state", player.key().as_ref(), &game_id.to_le_bytes()],
+        seeds = [b"game_state", initiator.key().as_ref(), &game_id.to_le_bytes()],
         bump
     )]
     pub game_state: Account<'info, GameState>,
 
+    pub price_update: Account<'info, PriceUpdateV2>,
+
     pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
 #[instruction(game_id: u64, initiator: Pubkey)]
 pub struct StartGame<'info> {
     #[account(mut)]
-    pub player: Signer<'info>,
+    pub challenger: Signer<'info>,
+
+    // USDC token account of the challenger (must be passed in)
+    #[account(
+        mut,
+        constraint = challenger_token_account.owner == challenger.key() @ CustomError::InvalidTokenAccount,
+        constraint = challenger_token_account.mint == usdc_mint.key() @ CustomError::InvalidTokenMint,
+    )]
+    pub challenger_token_account: Account<'info, TokenAccount>,
+
+    pub usdc_mint: Account<'info, Mint>, // USDC mint account (for verification)
 
     #[account(
         mut,
-        constraint = game_state.is_initiator(player.key()) @ CustomError::CannotJoinOwnGame,
+        constraint = vault.mint == usdc_mint.key() @ CustomError::InvalidTokenMint,
+        seeds = [b"game_vault", initiator.key().as_ref(), &game_id.to_le_bytes()],
+        bump
+    )]
+    pub vault: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        constraint = !game_state.is_initiator(challenger.key()) @ CustomError::CannotJoinOwnGame,
         constraint = game_state.is_correct_initiator(initiator) @ CustomError::IncorrectInitiator,
         constraint = game_state.is_correct_game_id(game_id) @ CustomError::IncorrectGameId,
         seeds = [b"game_state", initiator.as_ref(), &game_id.to_le_bytes()],
@@ -340,6 +443,7 @@ pub struct StartGame<'info> {
     pub price_update: Account<'info, PriceUpdateV2>,
 
     pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
 }
 
 // Use TWAP (Time-Weighted Average Price) for price checks
@@ -352,14 +456,30 @@ pub struct StartGame<'info> {
 #[instruction(game_id: u64, initiator: Pubkey)]
 pub struct CloseGame<'info> {
     #[account(mut)]
-    pub player: Signer<'info>,
+    pub winner: Signer<'info>,
 
-    pub twap_update: Account<'info, TwapUpdate>,
+    // USDC token account of the winner (must be passed in)
+    #[account(
+        mut,
+        constraint = winner_token_account.owner == winner.key() @ CustomError::InvalidTokenAccount,
+        constraint = winner_token_account.mint == usdc_mint.key() @ CustomError::InvalidTokenMint,
+    )]
+    pub winner_token_account: Account<'info, TokenAccount>,
+
+    pub usdc_mint: Account<'info, Mint>, // USDC mint account (for verification)
 
     #[account(
         mut,
+        constraint = vault.mint == usdc_mint.key() @ CustomError::InvalidTokenMint,
+        seeds = [b"game_vault", initiator.key().as_ref(), &game_id.to_le_bytes()],
+        bump
+    )]
+    pub vault: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        constraint = (game_state.is_participant(winner.key())) @ CustomError::NotAuthorized,
         constraint = game_state.is_active() @ CustomError::GameNotActive,
-        constraint = game_state.is_ended() @ CustomError::GameAlreadyEnded,
         constraint = game_state.is_correct_initiator(initiator) @ CustomError::IncorrectInitiator,
         constraint = game_state.is_correct_game_id(game_id) @ CustomError::IncorrectGameId,
         seeds = [b"game_state", initiator.as_ref(), &game_id.to_le_bytes()],
@@ -367,21 +487,45 @@ pub struct CloseGame<'info> {
     )]
     pub game_state: Account<'info, GameState>,
 
+    pub twap_update: Account<'info, TwapUpdate>,
+
     pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
     #[account(mut)]
-    pub player: Signer<'info>,
+    pub initiator: Signer<'info>,
 
     #[account(
         mut,
-        close = player,
-        seeds = [b"game_state", player.key().as_ref(), &game_state.game_id.to_le_bytes()],
+        constraint = initiator_token_account.owner == initiator.key() @ CustomError::InvalidTokenAccount,
+        constraint = initiator_token_account.mint == usdc_mint.key() @ CustomError::InvalidTokenMint,
+    )]
+    pub initiator_token_account: Account<'info, TokenAccount>,
+
+    pub usdc_mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        constraint = vault.mint == usdc_mint.key() @ CustomError::InvalidTokenMint,
+        seeds = [b"game_vault", initiator.key().as_ref(), &game_state.game_id.to_le_bytes()],
         bump
     )]
+    pub vault: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        constraint = game_state.is_initiator(initiator.key()) @ CustomError::NotInitiator,
+        constraint = !game_state.is_ended() @ CustomError::GameAlreadyEnded,
+        constraint = game_state.joinable_game() @ CustomError::WithdrawalBlocked,
+        seeds = [b"game_state", initiator.key().as_ref(), &game_state.game_id.to_le_bytes()],
+        bump = game_state.bump
+    )]
     pub game_state: Account<'info, GameState>,
+
+    pub token_program: Program<'info, Token>,
 }
 
 /**
@@ -426,7 +570,15 @@ impl GameState {
     }
 
     pub fn is_initiator(&self, pubkey: Pubkey) -> bool {
-        pubkey != self.initiator
+        pubkey == self.initiator
+    }
+
+    pub fn is_challenger(&self, pubkey: Pubkey) -> bool {
+        Some(pubkey) == self.challenger
+    }
+
+    pub fn is_participant(&self, pubkey: Pubkey) -> bool {
+        self.is_initiator(pubkey) || self.is_challenger(pubkey)
     }
 
     pub fn is_correct_initiator(&self, pubkey: Pubkey) -> bool {
@@ -463,11 +615,23 @@ pub enum CustomError {
     #[msg("Arithmetic overflow")]
     Overflow,
 
+    #[msg("Caller is not a participant of the game")]
+    NotAuthorized,
+
+    #[msg("Only the winner can the game")]
+    NotTheWinner,
+
     #[msg("Only the initiator can withdraw from this game")]
     NotInitiator,
 
     #[msg("The price feed data is stale or unavailable")]
     StalePriceFeed,
+
+    #[msg("Invalid token account")]
+    InvalidTokenAccount,
+
+    #[msg("Token mint must be USDC")]
+    InvalidTokenMint,
 
     #[msg("Invalid price value received from oracle")]
     InvalidPriceValue,
@@ -564,7 +728,7 @@ pub struct GameClosed {
 
 #[event]
 pub struct GameWithdraw {
-    pub end_timestamp: i64,
+    pub cancelled_timestamp: i64,
 }
 
 /**
