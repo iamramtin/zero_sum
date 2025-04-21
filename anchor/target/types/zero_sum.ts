@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/zero_sum.json`.
  */
 export type ZeroSum = {
-  "address": "Cy59cDTqWRNtNF2x7ESkB1vEuSV2uLW85en5Ph7h1LrU",
+  "address": "5ngJ1FaFSZAtsW6rrRmQEN65FXKgxVTr51epWTpsGyLf",
   "metadata": {
     "name": "zeroSum",
     "version": "0.1.0",
@@ -14,48 +14,17 @@ export type ZeroSum = {
   },
   "instructions": [
     {
-      "name": "checkPriceMovement",
-      "discriminator": [
-        254,
-        59,
-        192,
-        234,
-        11,
-        116,
-        117,
-        203
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "priceUpdate"
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "basePrice",
-          "type": "i64"
-        },
-        {
-          "name": "baseExponent",
-          "type": "i32"
-        },
-        {
-          "name": "percentage",
-          "type": "f64"
-        }
-      ]
-    },
-    {
       "name": "closeGame",
+      "docs": [
+        "Closes the game and determines outcome based on price movement.",
+        "",
+        "Called by the initiator once the game is ready to be closed (price condition met).",
+        "",
+        "This function:",
+        "- Validates that the game is active and not already closed",
+        "- Marks the game as closed",
+        "- Handles payout logic based on outcome"
+      ],
       "discriminator": [
         237,
         236,
@@ -142,7 +111,10 @@ export type ZeroSum = {
           }
         },
         {
-          "name": "twapUpdate"
+          "name": "chainlinkFeed"
+        },
+        {
+          "name": "chainlinkProgram"
         },
         {
           "name": "systemProgram",
@@ -166,6 +138,17 @@ export type ZeroSum = {
     },
     {
       "name": "createGame",
+      "docs": [
+        "Creates a new game and initializes game state.",
+        "",
+        "This is called by the first player (initiator), who also provides their prediction",
+        "on whether the price will increase or decrease.",
+        "",
+        "This function:",
+        "- Initializes the GameState account",
+        "- Stores the initiator’s prediction",
+        "- Sets initial game state"
+      ],
       "discriminator": [
         124,
         69,
@@ -252,7 +235,10 @@ export type ZeroSum = {
           }
         },
         {
-          "name": "priceUpdate"
+          "name": "chainlinkFeed"
+        },
+        {
+          "name": "chainlinkProgram"
         },
         {
           "name": "systemProgram",
@@ -279,16 +265,26 @@ export type ZeroSum = {
       ]
     },
     {
-      "name": "startGame",
+      "name": "joinGame",
+      "docs": [
+        "Allows a second player (challenger) to join an open game.",
+        "",
+        "The challenger is automatically assigned the *opposite* prediction to the initiator.",
+        "",
+        "This function:",
+        "- Validates game is joinable",
+        "- Ensures challenger is not the same as initiator",
+        "- Marks the game as started"
+      ],
       "discriminator": [
-        249,
-        47,
-        252,
-        172,
-        184,
-        162,
-        245,
-        14
+        107,
+        112,
+        18,
+        38,
+        56,
+        173,
+        60,
+        128
       ],
       "accounts": [
         {
@@ -366,7 +362,10 @@ export type ZeroSum = {
           }
         },
         {
-          "name": "priceUpdate"
+          "name": "chainlinkFeed"
+        },
+        {
+          "name": "chainlinkProgram"
         },
         {
           "name": "systemProgram",
@@ -377,10 +376,29 @@ export type ZeroSum = {
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "gameId",
+          "type": "u64"
+        },
+        {
+          "name": "initiator",
+          "type": "pubkey"
+        }
+      ]
     },
     {
       "name": "withdraw",
+      "docs": [
+        "Cancels a game and allows the initiator to withdraw their stake.",
+        "",
+        "Only allowed if no challenger has joined yet.",
+        "",
+        "This function:",
+        "- Ensures the game is still joinable and hasn't closed",
+        "- Returns the entry amount to the initiator",
+        "- Marks the game as cancelled"
+      ],
       "discriminator": [
         183,
         18,
@@ -429,9 +447,8 @@ export type ZeroSum = {
                 "path": "initiator"
               },
               {
-                "kind": "account",
-                "path": "game_state.game_id",
-                "account": "gameState"
+                "kind": "arg",
+                "path": "gameId"
               }
             ]
           }
@@ -461,9 +478,8 @@ export type ZeroSum = {
                 "path": "initiator"
               },
               {
-                "kind": "account",
-                "path": "game_state.game_id",
-                "account": "gameState"
+                "kind": "arg",
+                "path": "gameId"
               }
             ]
           }
@@ -471,9 +487,18 @@ export type ZeroSum = {
         {
           "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "gameId",
+          "type": "u64"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -489,35 +514,22 @@ export type ZeroSum = {
         134,
         120
       ]
-    },
-    {
-      "name": "priceUpdateV2",
-      "discriminator": [
-        34,
-        241,
-        35,
-        99,
-        157,
-        126,
-        244,
-        205
-      ]
-    },
-    {
-      "name": "twapUpdate",
-      "discriminator": [
-        104,
-        192,
-        188,
-        72,
-        246,
-        166,
-        12,
-        81
-      ]
     }
   ],
   "events": [
+    {
+      "name": "gameCancelled",
+      "discriminator": [
+        113,
+        20,
+        200,
+        104,
+        76,
+        35,
+        9,
+        241
+      ]
+    },
     {
       "name": "gameClosed",
       "discriminator": [
@@ -545,29 +557,16 @@ export type ZeroSum = {
       ]
     },
     {
-      "name": "gameStarted",
+      "name": "gameJoined",
       "discriminator": [
-        222,
-        247,
-        78,
-        255,
-        61,
-        184,
-        156,
-        41
-      ]
-    },
-    {
-      "name": "gameWithdraw",
-      "discriminator": [
-        22,
-        161,
-        222,
-        68,
+        111,
+        242,
         51,
-        239,
-        167,
-        132
+        235,
+        66,
+        43,
+        140,
+        84
       ]
     },
     {
@@ -582,32 +581,6 @@ export type ZeroSum = {
         79,
         86
       ]
-    },
-    {
-      "name": "priceMovementChecked",
-      "discriminator": [
-        98,
-        233,
-        23,
-        26,
-        198,
-        1,
-        5,
-        63
-      ]
-    },
-    {
-      "name": "transferExecuted",
-      "discriminator": [
-        8,
-        128,
-        224,
-        132,
-        112,
-        216,
-        192,
-        35
-      ]
     }
   ],
   "errors": [
@@ -618,81 +591,112 @@ export type ZeroSum = {
     },
     {
       "code": 6001,
+      "name": "notAuthorized",
+      "msg": "Caller is not a participant of the game"
+    },
+    {
+      "code": 6002,
+      "name": "notTheWinner",
+      "msg": "Only the winner can the game"
+    },
+    {
+      "code": 6003,
       "name": "notInitiator",
       "msg": "Only the initiator can withdraw from this game"
     },
     {
-      "code": 6002,
+      "code": 6004,
       "name": "stalePriceFeed",
       "msg": "The price feed data is stale or unavailable"
     },
     {
-      "code": 6003,
+      "code": 6005,
       "name": "invalidTokenAccount",
       "msg": "Invalid token account"
     },
     {
-      "code": 6004,
+      "code": 6006,
       "name": "invalidTokenMint",
       "msg": "Token mint must be USDC"
     },
     {
-      "code": 6005,
+      "code": 6007,
       "name": "invalidPriceValue",
       "msg": "Invalid price value received from oracle"
     },
     {
-      "code": 6006,
+      "code": 6008,
       "name": "invalidPrediction",
       "msg": "Prediction must be 'Increase' or 'Decrease'"
     },
     {
-      "code": 6007,
+      "code": 6009,
+      "name": "invalidPriceFeed",
+      "msg": "Invalid price feed"
+    },
+    {
+      "code": 6010,
       "name": "incorrectInitiator",
       "msg": "Incorrect initiator address provided"
     },
     {
-      "code": 6008,
+      "code": 6011,
       "name": "incorrectGameId",
       "msg": "Incorrect game ID provided"
     },
     {
-      "code": 6009,
+      "code": 6012,
       "name": "gameNotActive",
       "msg": "Game does not exist or has not been properly initialized"
     },
     {
-      "code": 6010,
+      "code": 6013,
       "name": "gameAlreadyEnded",
       "msg": "This game has already been completed or cancelled"
     },
     {
-      "code": 6011,
+      "code": 6014,
       "name": "gameAlreadyFull",
       "msg": "This game already has two players"
     },
     {
-      "code": 6012,
+      "code": 6015,
       "name": "withdrawalBlocked",
       "msg": "Withdrawal not allowed after a challenger has joined"
     },
     {
-      "code": 6013,
+      "code": 6016,
       "name": "excessivePriceVolatility",
       "msg": "Cannot join - price has moved more than 1% since creation"
     },
     {
-      "code": 6014,
+      "code": 6017,
       "name": "thresholdNotReached",
       "msg": "Neither price threshold has been reached yet"
     },
     {
-      "code": 6015,
+      "code": 6018,
       "name": "cannotJoinOwnGame",
       "msg": "Cannot join your own game"
     }
   ],
   "types": [
+    {
+      "name": "gameCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "gameId",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
     {
       "name": "gameClosed",
       "type": {
@@ -704,10 +708,6 @@ export type ZeroSum = {
           },
           {
             "name": "finalPrice",
-            "type": "i64"
-          },
-          {
-            "name": "formattedFinalPrice",
             "type": "f64"
           },
           {
@@ -756,15 +756,7 @@ export type ZeroSum = {
           },
           {
             "name": "initialPrice",
-            "type": "i64"
-          },
-          {
-            "name": "formattedPrice",
             "type": "f64"
-          },
-          {
-            "name": "exponent",
-            "type": "i32"
           },
           {
             "name": "entryAmount",
@@ -782,7 +774,7 @@ export type ZeroSum = {
       }
     },
     {
-      "name": "gameStarted",
+      "name": "gameJoined",
       "type": {
         "kind": "struct",
         "fields": [
@@ -811,9 +803,6 @@ export type ZeroSum = {
     },
     {
       "name": "gameState",
-      "docs": [
-        "* ACCOUNTS"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -841,30 +830,26 @@ export type ZeroSum = {
           },
           {
             "name": "initialPrice",
+            "type": "f64"
+          },
+          {
+            "name": "createdAt",
             "type": "i64"
           },
           {
-            "name": "priceExponent",
-            "type": "i32"
-          },
-          {
-            "name": "creationTimestamp",
-            "type": "i64"
-          },
-          {
-            "name": "startTimestamp",
+            "name": "startedAt",
             "type": {
               "option": "i64"
             }
           },
           {
-            "name": "endTimestamp",
+            "name": "closedAt",
             "type": {
               "option": "i64"
             }
           },
           {
-            "name": "cancelledTimestamp",
+            "name": "cancelledAt",
             "type": {
               "option": "i64"
             }
@@ -881,149 +866,27 @@ export type ZeroSum = {
       }
     },
     {
-      "name": "gameWithdraw",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "endTimestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "priceFeedMessage",
-      "repr": {
-        "kind": "c"
-      },
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "feedId",
-            "docs": [
-              "`FeedId` but avoid the type alias because of compatibility issues with Anchor's `idl-build` feature."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "price",
-            "type": "i64"
-          },
-          {
-            "name": "conf",
-            "type": "u64"
-          },
-          {
-            "name": "exponent",
-            "type": "i32"
-          },
-          {
-            "name": "publishTime",
-            "docs": [
-              "The timestamp of this price update in seconds"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "prevPublishTime",
-            "docs": [
-              "The timestamp of the previous price update. This field is intended to allow users to",
-              "identify the single unique price update for any moment in time:",
-              "for any time t, the unique update is the one such that prev_publish_time < t <= publish_time.",
-              "",
-              "Note that there may not be such an update while we are migrating to the new message-sending logic,",
-              "as some price updates on pythnet may not be sent to other chains (because the message-sending",
-              "logic may not have triggered). We can solve this problem by making the message-sending mandatory",
-              "(which we can do once publishers have migrated over).",
-              "",
-              "Additionally, this field may be equal to publish_time if the message is sent on a slot where",
-              "where the aggregation was unsuccesful. This problem will go away once all publishers have",
-              "migrated over to a recent version of pyth-agent."
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "emaPrice",
-            "type": "i64"
-          },
-          {
-            "name": "emaConf",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
       "name": "priceFetched",
-      "docs": [
-        "* EVENTS"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "description",
+            "type": "string"
+          },
           {
             "name": "price",
-            "type": "i64"
-          },
-          {
-            "name": "conf",
-            "type": "u64"
-          },
-          {
-            "name": "exponent",
-            "type": "i32"
-          },
-          {
-            "name": "formattedPrice",
-            "type": "f64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "priceMovementChecked",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "basePrice",
-            "type": "i64"
-          },
-          {
-            "name": "currentPrice",
-            "type": "i64"
-          },
-          {
-            "name": "exponent",
-            "type": "i32"
-          },
-          {
-            "name": "percentage",
             "type": "f64"
           },
           {
-            "name": "increased",
-            "type": "bool"
-          },
-          {
-            "name": "decreased",
-            "type": "bool"
+            "name": "timestamp",
+            "type": "i64"
           }
         ]
       }
     },
     {
       "name": "pricePrediction",
-      "docs": [
-        "* ENUM"
-      ],
       "type": {
         "kind": "enum",
         "variants": [
@@ -1032,174 +895,6 @@ export type ZeroSum = {
           },
           {
             "name": "decrease"
-          }
-        ]
-      }
-    },
-    {
-      "name": "priceUpdateV2",
-      "docs": [
-        "A price update account. This account is used by the Pyth Receiver program to store a verified price update from a Pyth price feed.",
-        "It contains:",
-        "- `write_authority`: The write authority for this account. This authority can close this account to reclaim rent or update the account to contain a different price update.",
-        "- `verification_level`: The [`VerificationLevel`] of this price update. This represents how many Wormhole guardian signatures have been verified for this price update.",
-        "- `price_message`: The actual price update.",
-        "- `posted_slot`: The slot at which this price update was posted."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "writeAuthority",
-            "type": "pubkey"
-          },
-          {
-            "name": "verificationLevel",
-            "type": {
-              "defined": {
-                "name": "verificationLevel"
-              }
-            }
-          },
-          {
-            "name": "priceMessage",
-            "type": {
-              "defined": {
-                "name": "priceFeedMessage"
-              }
-            }
-          },
-          {
-            "name": "postedSlot",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "transferExecuted",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "amountInLamports",
-            "type": "u64"
-          },
-          {
-            "name": "to",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "twapPrice",
-      "docs": [
-        "The time weighted average price & conf for a feed over the window [start_time, end_time].",
-        "This type is used to persist the calculated TWAP in TwapUpdate accounts on Solana."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "feedId",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "startTime",
-            "type": "i64"
-          },
-          {
-            "name": "endTime",
-            "type": "i64"
-          },
-          {
-            "name": "price",
-            "type": "i64"
-          },
-          {
-            "name": "conf",
-            "type": "u64"
-          },
-          {
-            "name": "exponent",
-            "type": "i32"
-          },
-          {
-            "name": "downSlotsRatio",
-            "docs": [
-              "Ratio out of 1_000_000, where a value of 1_000_000 represents",
-              "all slots were missed and 0 represents no slots were missed."
-            ],
-            "type": "u32"
-          }
-        ]
-      }
-    },
-    {
-      "name": "twapUpdate",
-      "docs": [
-        "A time weighted average price account.",
-        "This account is used by the Pyth Receiver program to store a TWAP update from a Pyth price feed.",
-        "TwapUpdates can only be created after the client has verified the VAAs via the Wormhole contract.",
-        "Check out `target_chains/solana/cli/src/main.rs` for an example of how to do this.",
-        "",
-        "It contains:",
-        "- `write_authority`: The write authority for this account. This authority can close this account to reclaim rent or update the account to contain a different TWAP update.",
-        "- `twap`: The actual TWAP update."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "writeAuthority",
-            "type": "pubkey"
-          },
-          {
-            "name": "twap",
-            "type": {
-              "defined": {
-                "name": "twapPrice"
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "verificationLevel",
-      "docs": [
-        "Pyth price updates are bridged to all blockchains via Wormhole.",
-        "Using the price updates on another chain requires verifying the signatures of the Wormhole guardians.",
-        "The usual process is to check the signatures for two thirds of the total number of guardians, but this can be cumbersome on Solana because of the transaction size limits,",
-        "so we also allow for partial verification.",
-        "",
-        "This enum represents how much a price update has been verified:",
-        "- If `Full`, we have verified the signatures for two thirds of the current guardians.",
-        "- If `Partial`, only `num_signatures` guardian signatures have been checked.",
-        "",
-        "# Warning",
-        "Using partially verified price updates is dangerous, as it lowers the threshold of guardians that need to collude to produce a malicious price update."
-      ],
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "partial",
-            "fields": [
-              {
-                "name": "numSignatures",
-                "type": "u8"
-              }
-            ]
-          },
-          {
-            "name": "full"
           }
         ]
       }
