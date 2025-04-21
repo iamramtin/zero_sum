@@ -9,6 +9,16 @@
   "instructions": [
     {
       "name": "close_game",
+      "docs": [
+        "Closes the game and determines outcome based on price movement.",
+        "",
+        "Called by the initiator once the game is ready to be closed (price condition met).",
+        "",
+        "This function:",
+        "- Validates that the game is active and not already closed",
+        "- Marks the game as closed",
+        "- Handles payout logic based on outcome"
+      ],
       "discriminator": [
         237,
         236,
@@ -122,6 +132,17 @@
     },
     {
       "name": "create_game",
+      "docs": [
+        "Creates a new game and initializes game state.",
+        "",
+        "This is called by the first player (initiator), who also provides their prediction",
+        "on whether the price will increase or decrease.",
+        "",
+        "This function:",
+        "- Initializes the GameState account",
+        "- Stores the initiator’s prediction",
+        "- Sets initial game state"
+      ],
       "discriminator": [
         124,
         69,
@@ -239,6 +260,16 @@
     },
     {
       "name": "join_game",
+      "docs": [
+        "Allows a second player (challenger) to join an open game.",
+        "",
+        "The challenger is automatically assigned the *opposite* prediction to the initiator.",
+        "",
+        "This function:",
+        "- Validates game is joinable",
+        "- Ensures challenger is not the same as initiator",
+        "- Marks the game as started"
+      ],
       "discriminator": [
         107,
         112,
@@ -352,6 +383,16 @@
     },
     {
       "name": "withdraw",
+      "docs": [
+        "Cancels a game and allows the initiator to withdraw their stake.",
+        "",
+        "Only allowed if no challenger has joined yet.",
+        "",
+        "This function:",
+        "- Ensures the game is still joinable and hasn't closed",
+        "- Returns the entry amount to the initiator",
+        "- Marks the game as cancelled"
+      ],
       "discriminator": [
         183,
         18,
@@ -756,9 +797,6 @@
     },
     {
       "name": "GameState",
-      "docs": [
-        "* ACCOUNTS"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -789,23 +827,23 @@
             "type": "f64"
           },
           {
-            "name": "creation_timestamp",
+            "name": "created_at",
             "type": "i64"
           },
           {
-            "name": "start_timestamp",
+            "name": "started_at",
             "type": {
               "option": "i64"
             }
           },
           {
-            "name": "end_timestamp",
+            "name": "closed_at",
             "type": {
               "option": "i64"
             }
           },
           {
-            "name": "cancelled_timestamp",
+            "name": "cancelled_at",
             "type": {
               "option": "i64"
             }
@@ -823,9 +861,6 @@
     },
     {
       "name": "PriceFetched",
-      "docs": [
-        "* EVENTS"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -846,9 +881,6 @@
     },
     {
       "name": "PricePrediction",
-      "docs": [
-        "* ENUM"
-      ],
       "type": {
         "kind": "enum",
         "variants": [

@@ -15,6 +15,16 @@ export type ZeroSum = {
   "instructions": [
     {
       "name": "closeGame",
+      "docs": [
+        "Closes the game and determines outcome based on price movement.",
+        "",
+        "Called by the initiator once the game is ready to be closed (price condition met).",
+        "",
+        "This function:",
+        "- Validates that the game is active and not already closed",
+        "- Marks the game as closed",
+        "- Handles payout logic based on outcome"
+      ],
       "discriminator": [
         237,
         236,
@@ -128,6 +138,17 @@ export type ZeroSum = {
     },
     {
       "name": "createGame",
+      "docs": [
+        "Creates a new game and initializes game state.",
+        "",
+        "This is called by the first player (initiator), who also provides their prediction",
+        "on whether the price will increase or decrease.",
+        "",
+        "This function:",
+        "- Initializes the GameState account",
+        "- Stores the initiator’s prediction",
+        "- Sets initial game state"
+      ],
       "discriminator": [
         124,
         69,
@@ -245,6 +266,16 @@ export type ZeroSum = {
     },
     {
       "name": "joinGame",
+      "docs": [
+        "Allows a second player (challenger) to join an open game.",
+        "",
+        "The challenger is automatically assigned the *opposite* prediction to the initiator.",
+        "",
+        "This function:",
+        "- Validates game is joinable",
+        "- Ensures challenger is not the same as initiator",
+        "- Marks the game as started"
+      ],
       "discriminator": [
         107,
         112,
@@ -358,6 +389,16 @@ export type ZeroSum = {
     },
     {
       "name": "withdraw",
+      "docs": [
+        "Cancels a game and allows the initiator to withdraw their stake.",
+        "",
+        "Only allowed if no challenger has joined yet.",
+        "",
+        "This function:",
+        "- Ensures the game is still joinable and hasn't closed",
+        "- Returns the entry amount to the initiator",
+        "- Marks the game as cancelled"
+      ],
       "discriminator": [
         183,
         18,
@@ -762,9 +803,6 @@ export type ZeroSum = {
     },
     {
       "name": "gameState",
-      "docs": [
-        "* ACCOUNTS"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -795,23 +833,23 @@ export type ZeroSum = {
             "type": "f64"
           },
           {
-            "name": "creationTimestamp",
+            "name": "createdAt",
             "type": "i64"
           },
           {
-            "name": "startTimestamp",
+            "name": "startedAt",
             "type": {
               "option": "i64"
             }
           },
           {
-            "name": "endTimestamp",
+            "name": "closedAt",
             "type": {
               "option": "i64"
             }
           },
           {
-            "name": "cancelledTimestamp",
+            "name": "cancelledAt",
             "type": {
               "option": "i64"
             }
@@ -829,9 +867,6 @@ export type ZeroSum = {
     },
     {
       "name": "priceFetched",
-      "docs": [
-        "* EVENTS"
-      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -852,9 +887,6 @@ export type ZeroSum = {
     },
     {
       "name": "pricePrediction",
-      "docs": [
-        "* ENUM"
-      ],
       "type": {
         "kind": "enum",
         "variants": [
