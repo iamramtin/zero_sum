@@ -1,35 +1,26 @@
 "use client";
 
+import BN from "bn.js";
 import {
   ANCHOR_DISCRIMINATOR_SIZE,
   getZeroSumProgram,
   getZeroSumProgramId,
 } from "@project/anchor";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import {
+  useAnchorWallet,
+  useConnection,
+  useWallet,
+} from "@solana/wallet-adapter-react";
 import { Cluster, PublicKey } from "@solana/web3.js";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
-import toast from "react-hot-toast";
+import { useCallback, useMemo } from "react";
 import { useCluster } from "../cluster/cluster-data-access";
 import { useAnchorProvider } from "../solana/solana-provider";
 import { useTransactionToast } from "../ui/ui-layout";
-import BN from "bn.js";
-
-// CONSTANTS
-// https://docs.chain.link/data-feeds/solana/using-data-feeds-solana
-const CHAINLINK_PROGRAM_ID = new PublicKey(
-  "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
-);
-// ETH/USD price feed on devnet
-// https://docs.chain.link/data-feeds/price-feeds/addresses?network=solana
-const CHAINLINK_FEED = new PublicKey(
-  "669U43LNHx7LsVj95uYksnhXUfWKDsdzVqev3V4Jpw3P"
-);
-
-// USDC token address - update this with your actual USDC token address on your target network
-const USDC_MINT = new PublicKey(
-  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" // Devnet USDC, replace with your actual mint
-);
+import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { toast } from "react-toastify";
+import { PriceData } from "./types";
+import { CONSTANTS } from "./constants";
 
 /**
  * Type for price prediction direction
@@ -90,9 +81,10 @@ export const findGameVaultPda = (
   );
 };
 
-export function useZeroSumProgram() {
+export function useZeroSumProgram(priceData: PriceData | null) {
+  const anchorWallet = useAnchorWallet();
+  const { publicKey, connected } = useWallet();
   const { connection } = useConnection();
-  const { publicKey } = useWallet();
   const { cluster } = useCluster();
 
   const provider = useAnchorProvider();
@@ -115,28 +107,19 @@ export function useZeroSumProgram() {
     queryFn: () => connection.getParsedAccountInfo(programId),
   });
 
-  // Query to fetch all game accounts
-  const getAllGames = useQuery({
-    queryKey: ["games", "allGames", { cluster }],
-    queryFn: async () => {
-      try {
-        const accounts = await program.account.gameState.all();
-        return accounts.map((account) => ({
-          publicKey: account.publicKey,
-          ...account.account,
-        }));
-      } catch (error) {
-        console.error("Error fetching all games:", error);
-        return [];
-      }
+  // Calculate price change percentage
+  const calculatePriceChange = useCallback(
+    (currentPrice: number, basePrice: number): number => {
+      return ((currentPrice - basePrice) / basePrice) * 100;
     },
-  });
+    []
+  );
 
   // Query to fetch all game accounts created by the connected wallet
-  const getMyGames = useQuery({
+  const getUserGames = useQuery({
     queryKey: [
       "games",
-      "myGames",
+      "userGames",
       { cluster, publicKey: publicKey?.toString() },
     ],
     queryFn: async () => {
@@ -165,57 +148,62 @@ export function useZeroSumProgram() {
     enabled: !!publicKey && !!provider,
   });
 
+  // Query to fetch all game accounts
+  const getGames = useQuery({
+    queryKey: ["games", "allGames", { cluster }],
+    queryFn: async () => {
+      try {
+        // Fetch all game state accounts without the authority filter
+        const accounts = await program.account.gameState.all();
+
+        return accounts.map((account) => ({
+          publicKey: account.publicKey,
+          ...account.account,
+        }));
+      } catch (error: any) {
+        console.error("Error fetching games:", error);
+        console.error("Error details:", error.stack);
+        return [];
+      }
+    },
+    enabled: !!provider,
+  });
+
   const createGame = useMutation<string, Error, CreateGameArgs>({
     mutationKey: ["game", "create", { cluster }],
     mutationFn: async ({ gameId, prediction }) => {
-      if (!publicKey) throw new Error("Wallet not connected");
+      // TODO: Extract into own function
+      if (!publicKey || !connected || !anchorWallet) {
+        toast.error("Please connect your wallet first");
+        throw new Error("Wallet not connected");
+      }
+
+      if (!priceData?.price) {
+        toast.error("Please wait for prices to load");
+        throw new Error("Price feed not loaded");
+      }
 
       try {
-        // Derive the game state PDA
-        const [gameStatePda] = findGameStatePda(
-          publicKey,
-          gameId,
-          program.programId
+        const initiatorTokenAccount = await getAssociatedTokenAddress(
+          CONSTANTS.USDC_MINT,
+          publicKey
         );
-
-        // Derive the vault PDA
-        const [vaultPda] = findGameVaultPda(
-          publicKey,
-          gameId,
-          program.programId
-        );
-
-        console.log("Creating game with PDAs:", {
-          gameStatePda: gameStatePda.toString(),
-          vaultPda: vaultPda.toString(),
-        });
-
-        // Get user's USDC token account
-        const initiatorTokenAccount = await connection.getTokenAccountsByOwner(
-          publicKey,
-          { mint: USDC_MINT }
-        );
-
-        if (initiatorTokenAccount.value.length === 0) {
-          throw new Error("No USDC token account found for this wallet");
-        }
 
         const tx = await program.methods
           .createGame(gameId, prediction)
           .accounts({
             initiator: publicKey,
-            initiatorTokenAccount: initiatorTokenAccount.value[0].pubkey,
-            usdcMint: USDC_MINT,
-            chainlinkFeed: CHAINLINK_FEED,
-            chainlinkProgram: CHAINLINK_PROGRAM_ID,
+            initiatorTokenAccount,
+            usdcMint: CONSTANTS.USDC_MINT,
+            chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
+            chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
           })
           .rpc();
 
         console.log("New game created with signature:", tx);
-
         return tx;
       } catch (error: any) {
-        console.error("Error creating game:", error);
+        toast.error("Unable to create game");
         if (error.logs) {
           console.error("Transaction logs:", error.logs);
         }
@@ -227,7 +215,7 @@ export function useZeroSumProgram() {
       toast.success("Successfully created game!");
       return queryClient.invalidateQueries({ queryKey: ["game"] });
     },
-    onError: (error) => toast.error(`Failed to create game: ${error}`),
+    onError: (error) => console.error(`Failed to create game: ${error}`),
   });
 
   const joinGame = useMutation<string, Error, JoinGameArgs>({
@@ -258,7 +246,7 @@ export function useZeroSumProgram() {
         // Get challenger's USDC token account
         const challengerTokenAccount = await connection.getTokenAccountsByOwner(
           publicKey,
-          { mint: USDC_MINT }
+          { mint: CONSTANTS.USDC_MINT }
         );
 
         if (challengerTokenAccount.value.length === 0) {
@@ -270,9 +258,9 @@ export function useZeroSumProgram() {
           .accounts({
             challenger: publicKey,
             challengerTokenAccount: challengerTokenAccount.value[0].pubkey,
-            usdcMint: USDC_MINT,
-            chainlinkFeed: CHAINLINK_FEED,
-            chainlinkProgram: CHAINLINK_PROGRAM_ID,
+            usdcMint: CONSTANTS.USDC_MINT,
+            chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
+            chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
           })
           .rpc();
 
@@ -321,7 +309,7 @@ export function useZeroSumProgram() {
         // Get winner's USDC token account
         const winnerTokenAccount = await connection.getTokenAccountsByOwner(
           publicKey,
-          { mint: USDC_MINT }
+          { mint: CONSTANTS.USDC_MINT }
         );
 
         if (winnerTokenAccount.value.length === 0) {
@@ -333,9 +321,9 @@ export function useZeroSumProgram() {
           .accounts({
             winner: publicKey,
             winnerTokenAccount: winnerTokenAccount.value[0].pubkey,
-            usdcMint: USDC_MINT,
-            chainlinkFeed: CHAINLINK_FEED,
-            chainlinkProgram: CHAINLINK_PROGRAM_ID,
+            usdcMint: CONSTANTS.USDC_MINT,
+            chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
+            chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
           })
           .rpc();
 
@@ -383,7 +371,7 @@ export function useZeroSumProgram() {
         // Get token accounts for both players
         const initiatorTokenAccount = await connection.getTokenAccountsByOwner(
           gameState.initiator,
-          { mint: USDC_MINT }
+          { mint: CONSTANTS.USDC_MINT }
         );
 
         if (!gameState.challenger) {
@@ -392,7 +380,7 @@ export function useZeroSumProgram() {
 
         const challengerTokenAccount = await connection.getTokenAccountsByOwner(
           gameState.challenger,
-          { mint: USDC_MINT }
+          { mint: CONSTANTS.USDC_MINT }
         );
 
         if (
@@ -408,7 +396,7 @@ export function useZeroSumProgram() {
             player: publicKey,
             initiatorTokenAccount: initiatorTokenAccount.value[0].pubkey,
             challengerTokenAccount: challengerTokenAccount.value[0].pubkey,
-            usdcMint: USDC_MINT,
+            usdcMint: CONSTANTS.USDC_MINT,
           })
           .rpc();
 
@@ -430,8 +418,8 @@ export function useZeroSumProgram() {
     onError: (error) => toast.error(`Failed to end game: ${error}`),
   });
 
-  const withdrawGame = useMutation<string, Error, WithdrawGameArgs>({
-    mutationKey: ["withdraw", "game", { cluster }],
+  const cancelGame = useMutation<string, Error, WithdrawGameArgs>({
+    mutationKey: ["cancel", "game", { cluster }],
     mutationFn: async ({ gameId }) => {
       if (!publicKey) throw new Error("Wallet not connected");
 
@@ -453,7 +441,7 @@ export function useZeroSumProgram() {
         // Get initiator's USDC token account
         const initiatorTokenAccount = await connection.getTokenAccountsByOwner(
           publicKey,
-          { mint: USDC_MINT }
+          { mint: CONSTANTS.USDC_MINT }
         );
 
         if (initiatorTokenAccount.value.length === 0) {
@@ -465,7 +453,7 @@ export function useZeroSumProgram() {
           .accounts({
             initiator: publicKey,
             initiatorTokenAccount: initiatorTokenAccount.value[0].pubkey,
-            usdcMint: USDC_MINT,
+            usdcMint: CONSTANTS.USDC_MINT,
           })
           .rpc();
 
@@ -490,13 +478,14 @@ export function useZeroSumProgram() {
   return {
     program,
     programId,
+    calculatePriceChange,
     getProgramAccount,
-    getAllGames,
-    getMyGames,
+    getUserGames,
+    getGames,
     createGame,
     joinGame,
     closeGame,
     drawGame,
-    withdrawGame,
+    cancelGame,
   };
 }

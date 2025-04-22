@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/zero_sum.json`.
  */
 export type ZeroSum = {
-  "address": "5ngJ1FaFSZAtsW6rrRmQEN65FXKgxVTr51epWTpsGyLf",
+  "address": "9LTrxFEXZkgYUD6QbZnsJZoxMwQpeKDCNGKSbUiYSc7d",
   "metadata": {
     "name": "zeroSum",
     "version": "0.1.0",

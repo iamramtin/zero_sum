@@ -10,7 +10,7 @@ pub mod state;
 use crate::common::*;
 use crate::instructions::*;
 
-declare_id!("5ngJ1FaFSZAtsW6rrRmQEN65FXKgxVTr51epWTpsGyLf");
+declare_id!("9LTrxFEXZkgYUD6QbZnsJZoxMwQpeKDCNGKSbUiYSc7d");
 
 #[program]
 pub mod zero_sum {
