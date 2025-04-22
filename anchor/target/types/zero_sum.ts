@@ -265,6 +265,126 @@ export type ZeroSum = {
       ]
     },
     {
+      "name": "drawGame",
+      "docs": [
+        "Allows players to claim back their stake if the game has timed out",
+        "without reaching the price threshold.",
+        "",
+        "This function:",
+        "- Checks if the game is active",
+        "- Verifies that the timeout period has elapsed",
+        "- Returns the entry amount to both players"
+      ],
+      "discriminator": [
+        251,
+        111,
+        25,
+        96,
+        47,
+        218,
+        220,
+        90
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "gameState",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "gameId"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "gameId"
+              }
+            ]
+          }
+        },
+        {
+          "name": "initiatorTokenAccount",
+          "writable": true
+        },
+        {
+          "name": "challengerTokenAccount",
+          "writable": true
+        },
+        {
+          "name": "usdcMint"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "gameId",
+          "type": "u64"
+        },
+        {
+          "name": "initiator",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "joinGame",
       "docs": [
         "Allows a second player (challenger) to join an open game.",
@@ -518,19 +638,6 @@ export type ZeroSum = {
   ],
   "events": [
     {
-      "name": "gameCancelled",
-      "discriminator": [
-        113,
-        20,
-        200,
-        104,
-        76,
-        35,
-        9,
-        241
-      ]
-    },
-    {
       "name": "gameClosed",
       "discriminator": [
         178,
@@ -661,74 +768,55 @@ export type ZeroSum = {
     },
     {
       "code": 6015,
+      "name": "gameTimeoutNotReached",
+      "msg": "Game timeout has not been reached yet"
+    },
+    {
+      "code": 6016,
       "name": "withdrawalBlocked",
       "msg": "Withdrawal not allowed after a challenger has joined"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "excessivePriceVolatility",
       "msg": "Cannot join - price has moved more than 1% since creation"
     },
     {
-      "code": 6017,
+      "code": 6018,
       "name": "thresholdNotReached",
       "msg": "Neither price threshold has been reached yet"
     },
     {
-      "code": 6018,
+      "code": 6019,
       "name": "cannotJoinOwnGame",
       "msg": "Cannot join your own game"
     }
   ],
   "types": [
     {
-      "name": "gameCancelled",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "gameId",
-            "type": "u64"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
       "name": "gameClosed",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "winner",
-            "type": "pubkey"
+            "name": "gameId",
+            "type": "u64"
           },
           {
-            "name": "finalPrice",
-            "type": "f64"
-          },
-          {
-            "name": "priceMovementPercentage",
-            "type": "f64"
-          },
-          {
-            "name": "winningPrediction",
+            "name": "outcome",
             "type": {
               "defined": {
-                "name": "pricePrediction"
+                "name": "gameOutcome"
               }
             }
           },
           {
-            "name": "totalPayout",
-            "type": "u64"
-          },
-          {
-            "name": "gameId",
-            "type": "u64"
+            "name": "details",
+            "type": {
+              "defined": {
+                "name": "gameOutcomeDetails"
+              }
+            }
           },
           {
             "name": "timestamp",
@@ -797,6 +885,70 @@ export type ZeroSum = {
           {
             "name": "timestamp",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "gameOutcome",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "win",
+            "fields": [
+              {
+                "defined": {
+                  "name": "pricePrediction"
+                }
+              }
+            ]
+          },
+          {
+            "name": "draw"
+          },
+          {
+            "name": "cancel"
+          }
+        ]
+      }
+    },
+    {
+      "name": "gameOutcomeDetails",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "win",
+            "fields": [
+              {
+                "name": "winner",
+                "type": "pubkey"
+              },
+              {
+                "name": "winningPrediction",
+                "type": {
+                  "defined": {
+                    "name": "pricePrediction"
+                  }
+                }
+              },
+              {
+                "name": "priceMovementPercentage",
+                "type": "f64"
+              },
+              {
+                "name": "finalPrice",
+                "type": "f64"
+              },
+              {
+                "name": "totalPayout",
+                "type": "u64"
+              }
+            ]
+          },
+          {
+            "name": "none"
           }
         ]
       }

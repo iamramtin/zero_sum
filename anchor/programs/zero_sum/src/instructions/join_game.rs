@@ -31,7 +31,7 @@ pub struct JoinGame<'info> {
         constraint = !game_state.is_initiator(challenger.key()) @ CustomError::CannotJoinOwnGame,
         constraint = game_state.is_initiator(initiator) @ CustomError::IncorrectInitiator,
         constraint = game_state.is_correct_game_id(game_id) @ CustomError::IncorrectGameId,
-        seeds = [b"game_state", initiator.as_ref(), &game_id.to_le_bytes()],
+        seeds = [b"game_state", initiator.key().as_ref(), &game_id.to_le_bytes()],
         bump = game_state.bump
     )]
     pub game_state: Account<'info, GameState>,
