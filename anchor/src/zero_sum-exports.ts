@@ -10,6 +10,8 @@ export { ZeroSum, ZeroSumIDL };
 // The programId is imported from the program IDL.
 export const ZERO_SUM_PROGRAM_ID = new PublicKey(ZeroSumIDL.address);
 
+export const ANCHOR_DISCRIMINATOR_SIZE = 8;
+
 // This is a helper function to get the ZeroSum Anchor program.
 export function getZeroSumProgram(
   provider: AnchorProvider,
