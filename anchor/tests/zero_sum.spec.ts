@@ -1,7 +1,12 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { ZeroSum } from "../target/types/zero_sum";
-import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import {
+  PublicKey,
+  Keypair,
+  LAMPORTS_PER_SOL,
+  Connection,
+} from "@solana/web3.js";
 import {
   createMint,
   createAssociatedTokenAccount,
@@ -10,16 +15,20 @@ import {
 } from "@solana/spl-token";
 import * as fs from "fs";
 
+// https://docs.chain.link/data-feeds/solana/using-data-feeds-solana
+const CHAINLINK_PROGRAM_ID = new PublicKey(
+  "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
+);
+// ETH/USD price feed on devnet
+// https://docs.chain.link/data-feeds/price-feeds/addresses?network=solana
+const CHAINLINK_FEED = new PublicKey(
+  "669U43LNHx7LsVj95uYksnhXUfWKDsdzVqev3V4Jpw3P"
+);
+
 const PricePrediction = {
   Increase: { increase: {} },
   Decrease: { decrease: {} },
 };
-
-// Load keypair from file
-function loadKeypairFromFile(filename: string): Keypair {
-  const secretKey = JSON.parse(fs.readFileSync(filename, "utf-8"));
-  return Keypair.fromSecretKey(new Uint8Array(secretKey));
-}
 
 describe("zero_sum", () => {
   // Configure the client to use the local cluster
@@ -27,20 +36,6 @@ describe("zero_sum", () => {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.ZeroSum as Program<ZeroSum>;
-
-  // Initialize test variables
-  const CHAINLINK_PROGRAM_ID = new PublicKey(
-    "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
-  );
-  // SOL/USD price feed on devnet
-  const CHAINLINK_FEED = new PublicKey(
-    "99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR"
-  );
-
-  // Generate unique game IDs for testing
-  const GAME_ID_1 = new anchor.BN(Date.now());
-  const GAME_ID_2 = new anchor.BN(Date.now() + 1);
-  const GAME_ID_3 = new anchor.BN(Date.now() + 2);
 
   // Load existing keypairs
   const initiator = loadKeypairFromFile("tests/id1.json");
@@ -52,12 +47,6 @@ describe("zero_sum", () => {
   let usdcMint: PublicKey;
   let initiatorTokenAccount: PublicKey;
   let challengerTokenAccount: PublicKey;
-  let gameState1: PublicKey;
-  let vault1: PublicKey;
-  let gameState2: PublicKey;
-  let vault2: PublicKey;
-  let gameState3: PublicKey;
-  let vault3: PublicKey;
 
   beforeAll(async () => {
     console.log("Test setup beginning...");
@@ -136,58 +125,6 @@ describe("zero_sum", () => {
       );
       console.log("Minted 10,000 USDC to challenger");
 
-      // Derive PDAs for the game states and vaults
-      [gameState1] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("game_state"),
-          initiator.publicKey.toBuffer(),
-          GAME_ID_1.toArrayLike(Buffer, "le", 8),
-        ],
-        program.programId
-      );
-      [vault1] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("game_vault"),
-          initiator.publicKey.toBuffer(),
-          GAME_ID_1.toArrayLike(Buffer, "le", 8),
-        ],
-        program.programId
-      );
-
-      [gameState2] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("game_state"),
-          initiator.publicKey.toBuffer(),
-          GAME_ID_2.toArrayLike(Buffer, "le", 8),
-        ],
-        program.programId
-      );
-      [vault2] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("game_vault"),
-          initiator.publicKey.toBuffer(),
-          GAME_ID_2.toArrayLike(Buffer, "le", 8),
-        ],
-        program.programId
-      );
-
-      [gameState3] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("game_state"),
-          initiator.publicKey.toBuffer(),
-          GAME_ID_3.toArrayLike(Buffer, "le", 8),
-        ],
-        program.programId
-      );
-      [vault3] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("game_vault"),
-          initiator.publicKey.toBuffer(),
-          GAME_ID_3.toArrayLike(Buffer, "le", 8),
-        ],
-        program.programId
-      );
-
       console.log("Test setup complete!");
     } catch (error: any) {
       console.error("Setup error:", error);
@@ -197,6 +134,8 @@ describe("zero_sum", () => {
 
   it("Creates a game successfully", async () => {
     try {
+      const gameId = new anchor.BN(Date.now());
+
       // Get initial token balance
       const initialBalance = (
         await getAccount(provider.connection, initiatorTokenAccount)
@@ -204,7 +143,7 @@ describe("zero_sum", () => {
 
       // Execute create_game instruction
       const tx = await program.methods
-        .createGame(GAME_ID_1, PricePrediction.Increase)
+        .createGame(gameId, PricePrediction.Increase)
         .accounts({
           initiator: initiator.publicKey,
           initiatorTokenAccount,
@@ -218,9 +157,16 @@ describe("zero_sum", () => {
       console.log("Game creation transaction signature:", tx);
 
       // Verify the game state
-      const gameStateAccount = await program.account.gameState.fetch(
-        gameState1
+      const [gameState] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("game_state"),
+          initiator.publicKey.toBuffer(),
+          gameId.toArrayLike(Buffer, "le", 8),
+        ],
+        program.programId
       );
+
+      const gameStateAccount = await program.account.gameState.fetch(gameState);
       expect(gameStateAccount.initiator.toString()).toBe(
         initiator.publicKey.toString()
       );
@@ -228,11 +174,19 @@ describe("zero_sum", () => {
         PricePrediction.Increase
       );
       expect(gameStateAccount.entryAmount.toString()).toBe("1000000000"); // 1000 USDC
-      expect(gameStateAccount.gameId.toString()).toBe(GAME_ID_1.toString());
+      expect(gameStateAccount.gameId.toString()).toBe(gameId.toString());
       expect(gameStateAccount.initialPrice).toBeGreaterThan(0);
 
       // Check that tokens were transferred to vault
-      const vaultBalance = (await getAccount(provider.connection, vault1))
+      const [vault] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("game_vault"),
+          initiator.publicKey.toBuffer(),
+          gameId.toArrayLike(Buffer, "le", 8),
+        ],
+        program.programId
+      );
+      const vaultBalance = (await getAccount(provider.connection, vault))
         .amount;
       expect(vaultBalance.toString()).toBe("1000000000"); // 1000 USDC in vault
 
@@ -244,7 +198,7 @@ describe("zero_sum", () => {
       expect(afterBalance.toString()).toBe(expectedBalance.toString());
 
       console.log(
-        "Game 1 created successfully with price:",
+        "Game created successfully with price:",
         gameStateAccount.initialPrice
       );
     } catch (error: any) {
@@ -253,10 +207,12 @@ describe("zero_sum", () => {
     }
   }, 30000);
 
-  it("Creates a second game for withdrawal testing", async () => {
+  it("Allows initiator to withdraw from a game", async () => {
     try {
-      const tx = await program.methods
-        .createGame(GAME_ID_2, PricePrediction.Decrease)
+      const gameId = new anchor.BN(Date.now());
+
+      await program.methods
+        .createGame(gameId, PricePrediction.Decrease)
         .accounts({
           initiator: initiator.publicKey,
           initiatorTokenAccount,
@@ -267,24 +223,20 @@ describe("zero_sum", () => {
         .signers([initiator])
         .rpc();
 
-      console.log("Game 2 creation transaction signature:", tx);
-
-      const gameStateAccount = await program.account.gameState.fetch(
-        gameState2
+      const [gameState] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("game_state"),
+          initiator.publicKey.toBuffer(),
+          gameId.toArrayLike(Buffer, "le", 8),
+        ],
+        program.programId
       );
+
+      let gameStateAccount = await program.account.gameState.fetch(gameState);
       expect(gameStateAccount.initiatorPrediction).toEqual(
         PricePrediction.Decrease
       );
 
-      console.log("Game 2 created successfully for withdrawal test");
-    } catch (error: any) {
-      console.error("Error creating second game:", error);
-      throw error;
-    }
-  }, 30000);
-
-  it("Allows initiator to withdraw from a game", async () => {
-    try {
       // Get initial token balance
       const initialBalance = (
         await getAccount(provider.connection, initiatorTokenAccount)
@@ -292,7 +244,7 @@ describe("zero_sum", () => {
 
       // Withdraw from game
       const tx = await program.methods
-        .withdraw(GAME_ID_2)
+        .withdraw(gameId)
         .accounts({
           initiator: initiator.publicKey,
           initiatorTokenAccount,
@@ -304,11 +256,9 @@ describe("zero_sum", () => {
       console.log("Withdrawal transaction signature:", tx);
 
       // Verify game state
-      const gameStateAccount = await program.account.gameState.fetch(
-        gameState2
-      );
-      expect(gameStateAccount.cancelledTimestamp).not.toBeNull();
-      expect(gameStateAccount.endTimestamp).not.toBeNull();
+      gameStateAccount = await program.account.gameState.fetch(gameState);
+      expect(gameStateAccount.cancelledAt).not.toBeNull();
+      expect(gameStateAccount.closedAt).not.toBeNull();
 
       // Check that tokens were returned to initiator
       const afterBalance = (
@@ -317,7 +267,7 @@ describe("zero_sum", () => {
       const expectedBalance = initialBalance + BigInt(1000000000);
       expect(afterBalance.toString()).toBe(expectedBalance.toString());
 
-      console.log("Successfully withdrew from Game 2");
+      console.log("Successfully withdrew from game");
     } catch (error: any) {
       console.error("Error withdrawing from game:", error);
       throw error;
@@ -326,12 +276,10 @@ describe("zero_sum", () => {
 
   it("Prevents initiator from joining their own game", async () => {
     try {
-      // Create a new game for this test
-      const GAME_ID_4 = new anchor.BN(Date.now() + 3);
+      const gameId = new anchor.BN(Date.now());
 
-      // Create game
       await program.methods
-        .createGame(GAME_ID_4, PricePrediction.Increase)
+        .createGame(gameId, PricePrediction.Increase)
         .accounts({
           initiator: initiator.publicKey,
           initiatorTokenAccount,
@@ -344,7 +292,7 @@ describe("zero_sum", () => {
 
       // Attempt to join own game
       await program.methods
-        .joinGame(GAME_ID_4, initiator.publicKey)
+        .joinGame(gameId, initiator.publicKey)
         .accounts({
           challenger: initiator.publicKey,
           challengerTokenAccount: initiatorTokenAccount,
@@ -366,39 +314,23 @@ describe("zero_sum", () => {
     }
   }, 30000);
 
-  it("Creates a third game for challenger to join", async () => {
-    try {
-      const tx = await program.methods
-        .createGame(GAME_ID_3, PricePrediction.Increase)
-        .accounts({
-          initiator: initiator.publicKey,
-          initiatorTokenAccount,
-          usdcMint,
-          chainlinkFeed: CHAINLINK_FEED,
-          chainlinkProgram: CHAINLINK_PROGRAM_ID,
-        })
-        .signers([initiator])
-        .rpc();
-
-      console.log("Game 3 creation transaction signature:", tx);
-
-      const gameStateAccount = await program.account.gameState.fetch(
-        gameState3
-      );
-      expect(gameStateAccount.initiatorPrediction).toEqual(
-        PricePrediction.Increase
-      );
-
-      console.log("Game 3 created successfully for challenger to join");
-    } catch (error: any) {
-      console.error("Error creating third game:", error);
-      throw error;
-    }
-  }, 30000);
-
-  // [NEED TO MOCK ORACLE] - might fail since due to excessive price volatility
+  // [NEED TO MOCK ORACLE] - might fail due to excessive price volatility
   // it("Allows a challenger to join a game", async () => {
   //   try {
+  //     const gameId = new anchor.BN(Date.now());
+
+  //     await program.methods
+  //       .createGame(gameId, PricePrediction.Increase)
+  //       .accounts({
+  //         initiator: initiator.publicKey,
+  //         initiatorTokenAccount,
+  //         usdcMint,
+  //         chainlinkFeed: CHAINLINK_FEED,
+  //         chainlinkProgram: CHAINLINK_PROGRAM_ID,
+  //       })
+  //       .signers([initiator])
+  //       .rpc();
+
   //     // Get initial token balance
   //     const initialBalance = (
   //       await getAccount(provider.connection, challengerTokenAccount)
@@ -406,7 +338,7 @@ describe("zero_sum", () => {
 
   //     // Challenger joins the game
   //     const tx = await program.methods
-  //       .joinGame(GAME_ID_3, initiator.publicKey)
+  //       .joinGame(gameId, initiator.publicKey)
   //       .accounts({
   //         challenger: challenger.publicKey,
   //         challengerTokenAccount,
@@ -420,9 +352,15 @@ describe("zero_sum", () => {
   //     console.log("Game join transaction signature:", tx);
 
   //     // Verify game state
-  //     const gameStateAccount = await program.account.gameState.fetch(
-  //       gameState3
+  //     const [gameState] = PublicKey.findProgramAddressSync(
+  //       [
+  //         Buffer.from("game_state"),
+  //         initiator.publicKey.toBuffer(),
+  //         gameId.toArrayLike(Buffer, "le", 8),
+  //       ],
+  //       program.programId
   //     );
+  //     const gameStateAccount = await program.account.gameState.fetch(gameState);
   //     expect(gameStateAccount.challenger).not.toBeNull();
 
   //     if (gameStateAccount.challenger) {
@@ -430,10 +368,18 @@ describe("zero_sum", () => {
   //         challenger.publicKey.toString()
   //       );
   //     }
-  //     expect(gameStateAccount.startTimestamp).not.toBeNull();
+  //     expect(gameStateAccount.startedAt).not.toBeNull();
 
   //     // Check that tokens were transferred to vault
-  //     const vaultBalance = (await getAccount(provider.connection, vault3))
+  //     const [vault] = PublicKey.findProgramAddressSync(
+  //       [
+  //         Buffer.from("game_vault"),
+  //         initiator.publicKey.toBuffer(),
+  //         gameId.toArrayLike(Buffer, "le", 8),
+  //       ],
+  //       program.programId
+  //     );
+  //     const vaultBalance = (await getAccount(provider.connection, vault))
   //       .amount;
   //     expect(vaultBalance.toString()).toBe("2000000000"); // 2000 USDC total in vault
 
@@ -444,9 +390,9 @@ describe("zero_sum", () => {
   //     const expectedBalance = initialBalance - BigInt(1000000000);
   //     expect(afterBalance.toString()).toBe(expectedBalance.toString());
 
-  //     console.log("Challenger successfully joined Game 3");
+  //     console.log("Challenger successfully joined a game");
   //   } catch (error: any) {
-  //     console.error("Error joining game:", error);
+  //     console.error("Error creating third game:", error);
   //     throw error;
   //   }
   // }, 30000);
@@ -538,3 +484,8 @@ describe("zero_sum", () => {
   //   }
   // }, 30000);
 });
+
+function loadKeypairFromFile(filename: string): Keypair {
+  const secretKey = JSON.parse(fs.readFileSync(filename, "utf-8"));
+  return Keypair.fromSecretKey(new Uint8Array(secretKey));
+}

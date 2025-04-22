@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::common::{CustomError, PricePrediction};
+use crate::common::{CustomError, PricePrediction, GAME_TIMEOUT_SECONDS};
 
 #[account]
 #[derive(InitSpace)]
@@ -45,7 +45,7 @@ impl GameState {
     }
 
     /// Returns true if the given public key is a participant in the game.
-    pub fn is_participant(&self, pubkey: Pubkey) -> bool {
+    pub fn is_player(&self, pubkey: Pubkey) -> bool {
         self.is_initiator(pubkey) || self.is_challenger(pubkey)
     }
 
@@ -79,17 +79,23 @@ impl GameState {
         Ok(())
     }
 
-    /// Validates whether the initiator can close the game.
-    pub fn validate_close(&self, game_id: u64, initiator_key: Pubkey) -> Result<()> {
+    /// Validates whether a player can close the game.
+    pub fn validate_close(
+        &self,
+        game_id: u64,
+        player_key: Pubkey,
+        initiator_key: Pubkey,
+    ) -> Result<()> {
         require!(
             self.is_correct_game_id(game_id),
             CustomError::IncorrectGameId
         );
+        require!(self.is_active(), CustomError::GameNotActive);
+        require!(self.is_player(player_key), CustomError::NotAuthorized);
         require!(
             self.is_initiator(initiator_key),
             CustomError::IncorrectInitiator
         );
-        require!(self.is_active(), CustomError::GameNotActive);
 
         Ok(())
     }
@@ -113,5 +119,21 @@ impl GameState {
             PricePrediction::Increase => PricePrediction::Decrease,
             PricePrediction::Decrease => PricePrediction::Increase,
         }
+    }
+
+    /// Returns true if the game has timed out without being resolved.
+    pub fn is_timed_out(&self, current_time: i64) -> Result<bool> {
+        // If the game is not active, it's not timed out
+        if !self.is_active() {
+            return Ok(false);
+        }
+
+        // If game has a challenger (active game), check against started_at
+        let start_time = self.started_at.unwrap();
+        let timeout_time = start_time
+            .checked_add(GAME_TIMEOUT_SECONDS)
+            .ok_or(error!(CustomError::Overflow))?;
+
+        return Ok(current_time > timeout_time);
     }
 }

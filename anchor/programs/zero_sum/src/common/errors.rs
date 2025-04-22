@@ -47,6 +47,9 @@ pub enum CustomError {
     #[msg("This game already has two players")]
     GameAlreadyFull,
 
+    #[msg("Game timeout has not been reached yet")]
+    GameTimeoutNotReached,
+
     #[msg("Withdrawal not allowed after a challenger has joined")]
     WithdrawalBlocked,
 

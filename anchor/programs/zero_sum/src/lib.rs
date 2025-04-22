@@ -154,7 +154,7 @@ pub mod zero_sum {
         let game_state = &mut ctx.accounts.game_state;
         let current_time = Clock::get()?.unix_timestamp;
 
-        game_state.validate_close(game_id, initiator)?;
+        game_state.validate_close(game_id, ctx.accounts.winner.key(), initiator)?;
 
         // Get price data from Chainlink
         let final_price = get_chainlink_price(
@@ -163,11 +163,12 @@ pub mod zero_sum {
             current_time,
         )?;
 
-        let (threshold_exceeded, direction, percentage_change) = has_price_moved_by_percentage(
-            game_state.initial_price,
-            final_price,
-            WIN_PRICE_THRESHOLD,
-        )?;
+        let (threshold_exceeded, direction, price_movement_percentage) =
+            has_price_moved_by_percentage(
+                game_state.initial_price,
+                final_price,
+                WIN_PRICE_THRESHOLD,
+            )?;
 
         require!(threshold_exceeded, CustomError::ThresholdNotReached);
 
@@ -187,7 +188,6 @@ pub mod zero_sum {
         );
 
         // Mark game as completed
-        let game_state = &mut ctx.accounts.game_state;
         game_state.closed_at = Some(current_time);
 
         // Transfer the full balance (both players' stakes) to the winner
@@ -222,12 +222,97 @@ pub mod zero_sum {
         };
 
         emit!(GameClosed {
-            winner,
-            final_price,
-            price_movement_percentage: percentage_change,
-            winning_prediction,
-            total_payout,
             game_id,
+            outcome: GameOutcome::Win(winning_prediction),
+            details: GameOutcomeDetails::Win {
+                winner,
+                winning_prediction,
+                price_movement_percentage,
+                final_price,
+                total_payout,
+            },
+            timestamp: current_time,
+        });
+
+        Ok(())
+    }
+
+    /// Allows players to claim back their stake if the game has timed out
+    /// without reaching the price threshold.
+    ///
+    /// This function:
+    /// - Checks if the game is active
+    /// - Verifies that the timeout period has elapsed
+    /// - Returns the entry amount to both players
+    pub fn draw_game(ctx: Context<DrawGame>, game_id: u64, initiator: Pubkey) -> Result<()> {
+        let game_state = &mut ctx.accounts.game_state;
+        let current_time = Clock::get()?.unix_timestamp;
+
+        game_state.validate_close(game_id, ctx.accounts.player.key(), initiator)?;
+
+        // Check the game hasn't been closed already
+        require!(!game_state.is_closed(), CustomError::GameAlreadyEnded);
+
+        // Check if timeout has elapsed
+        let start_time = game_state.started_at.unwrap();
+        require!(
+            current_time
+                > start_time
+                    .checked_add(GAME_TIMEOUT_SECONDS)
+                    .ok_or(error!(CustomError::Overflow))?,
+            CustomError::GameTimeoutNotReached
+        );
+
+        // Mark game as closed
+        game_state.closed_at = Some(current_time);
+
+        // Return the entry amounts to players
+        let seeds = &[
+            b"game_state",
+            initiator.as_ref(),
+            &game_id.to_le_bytes(),
+            &[game_state.bump],
+        ];
+        let signer = &[&seeds[..]];
+
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+
+        // Return initiator's stake
+        let cpi_accounts_initiator = TransferChecked {
+            from: ctx.accounts.vault.to_account_info(),
+            to: ctx.accounts.initiator_token_account.to_account_info(),
+            mint: ctx.accounts.usdc_mint.to_account_info(),
+            authority: game_state.to_account_info(),
+        };
+        let cpi_ctx_initiator =
+            CpiContext::new_with_signer(cpi_program.clone(), cpi_accounts_initiator, signer);
+
+        token::transfer_checked(
+            cpi_ctx_initiator,
+            game_state.entry_amount,
+            ctx.accounts.usdc_mint.decimals,
+        )?;
+
+        // Return challenger's stake
+        let cpi_accounts_challenger = TransferChecked {
+            from: ctx.accounts.vault.to_account_info(),
+            to: ctx.accounts.challenger_token_account.to_account_info(),
+            mint: ctx.accounts.usdc_mint.to_account_info(),
+            authority: game_state.to_account_info(),
+        };
+        let cpi_ctx_challenger =
+            CpiContext::new_with_signer(cpi_program.clone(), cpi_accounts_challenger, signer);
+
+        token::transfer_checked(
+            cpi_ctx_challenger,
+            game_state.entry_amount,
+            ctx.accounts.usdc_mint.decimals,
+        )?;
+
+        emit!(GameClosed {
+            game_id,
+            outcome: GameOutcome::Draw,
+            details: GameOutcomeDetails::None,
             timestamp: current_time,
         });
 
@@ -253,6 +338,7 @@ pub mod zero_sum {
         game_state.cancelled_at = Some(current_time);
         game_state.closed_at = Some(current_time);
 
+        // Return the entry amount to initiator
         let seeds = &[
             b"game_state",
             initiator_key.as_ref(),
@@ -276,8 +362,10 @@ pub mod zero_sum {
             ctx.accounts.usdc_mint.decimals,
         )?;
 
-        emit!(GameCancelled {
+        emit!(GameClosed {
             game_id,
+            outcome: GameOutcome::Cancel,
+            details: GameOutcomeDetails::None,
             timestamp: current_time,
         });
 
