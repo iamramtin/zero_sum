@@ -25,10 +25,7 @@ const CHAINLINK_FEED = new PublicKey(
   "669U43LNHx7LsVj95uYksnhXUfWKDsdzVqev3V4Jpw3P"
 );
 
-const PricePrediction = {
-  Increase: { increase: {} },
-  Decrease: { decrease: {} },
-};
+type PricePrediction = { increase: {} } | { decrease: {} };
 
 describe("zero_sum", () => {
   // Configure the client to use the local cluster
@@ -135,6 +132,7 @@ describe("zero_sum", () => {
   it("Creates a game successfully", async () => {
     try {
       const gameId = new anchor.BN(Date.now());
+      const prediction: PricePrediction = { increase: {} };
 
       // Get initial token balance
       const initialBalance = (
@@ -143,7 +141,7 @@ describe("zero_sum", () => {
 
       // Execute create_game instruction
       const tx = await program.methods
-        .createGame(gameId, PricePrediction.Increase)
+        .createGame(gameId, prediction)
         .accounts({
           initiator: initiator.publicKey,
           initiatorTokenAccount,
@@ -170,9 +168,7 @@ describe("zero_sum", () => {
       expect(gameStateAccount.initiator.toString()).toBe(
         initiator.publicKey.toString()
       );
-      expect(gameStateAccount.initiatorPrediction).toEqual(
-        PricePrediction.Increase
-      );
+      expect(gameStateAccount.initiatorPrediction).toEqual(prediction);
       expect(gameStateAccount.entryAmount.toString()).toBe("1000000000"); // 1000 USDC
       expect(gameStateAccount.gameId.toString()).toBe(gameId.toString());
       expect(gameStateAccount.initialPrice).toBeGreaterThan(0);
@@ -210,9 +206,10 @@ describe("zero_sum", () => {
   it("Allows initiator to withdraw from a game", async () => {
     try {
       const gameId = new anchor.BN(Date.now());
+      const prediction: PricePrediction = { decrease: {} };
 
       await program.methods
-        .createGame(gameId, PricePrediction.Decrease)
+        .createGame(gameId, prediction)
         .accounts({
           initiator: initiator.publicKey,
           initiatorTokenAccount,
@@ -233,9 +230,7 @@ describe("zero_sum", () => {
       );
 
       let gameStateAccount = await program.account.gameState.fetch(gameState);
-      expect(gameStateAccount.initiatorPrediction).toEqual(
-        PricePrediction.Decrease
-      );
+      expect(gameStateAccount.initiatorPrediction).toEqual(prediction);
 
       // Get initial token balance
       const initialBalance = (
@@ -277,9 +272,10 @@ describe("zero_sum", () => {
   it("Prevents initiator from joining their own game", async () => {
     try {
       const gameId = new anchor.BN(Date.now());
+      const prediction: PricePrediction = { increase: {} };
 
       await program.methods
-        .createGame(gameId, PricePrediction.Increase)
+        .createGame(gameId, prediction)
         .accounts({
           initiator: initiator.publicKey,
           initiatorTokenAccount,

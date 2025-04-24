@@ -22,6 +22,7 @@
     "baseUrl": ".",
     "paths": {
       "@project/anchor": ["anchor/src"],
+      "@solana/web3.js": ["node_modules/@solana/web3.js"],
       "@/*": ["./src/*"]
     }
   },

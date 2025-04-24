@@ -10,6 +10,8 @@ export { ZeroSum, ZeroSumIDL };
 // The programId is imported from the program IDL.
 export const ZERO_SUM_PROGRAM_ID = new PublicKey(ZeroSumIDL.address);
 
+export const ANCHOR_DISCRIMINATOR_SIZE = 8;
+
 // This is a helper function to get the ZeroSum Anchor program.
 export function getZeroSumProgram(
   provider: AnchorProvider,
@@ -30,7 +32,7 @@ export function getZeroSumProgramId(cluster: Cluster) {
     case "devnet":
     case "testnet":
       // This is the program ID for the ZeroSum program on devnet and testnet.
-      return new PublicKey("Cy59cDTqWRNtNF2x7ESkB1vEuSV2uLW85en5Ph7h1LrU");
+      return new PublicKey("9LTrxFEXZkgYUD6QbZnsJZoxMwQpeKDCNGKSbUiYSc7d");
     case "mainnet-beta":
     default:
       return ZERO_SUM_PROGRAM_ID;
