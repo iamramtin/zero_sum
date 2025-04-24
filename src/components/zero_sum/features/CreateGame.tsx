@@ -85,16 +85,16 @@ export function CreateGame({
             </div>
             <p className="text-sm text-gray-600">
               The winner is determined by whether ETH price increases or
-              decreases by {CONSTANTS.PRICE_CHANGE_THRESHOLD}% first. The second
+              decreases by {CONSTANTS.WIN_PRICE_THRESHOLD}% first. The second
               player must choose the opposite prediction and can only join if
               the ETH price has not changed by more than{" "}
-              {CONSTANTS.JOIN_PRICE_THRESHOLD}%.
+              {CONSTANTS.MAX_JOIN_PRICE_MOVEMENT}%.
             </p>
           </div>
 
           <p className="mb-4 font-medium">
             Make your prediction: Will ETH price increase or decrease by{" "}
-            {CONSTANTS.PRICE_CHANGE_THRESHOLD}% first?
+            {CONSTANTS.WIN_PRICE_THRESHOLD}% first?
           </p>
 
           <div className="flex gap-4">

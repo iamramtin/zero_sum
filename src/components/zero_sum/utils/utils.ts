@@ -76,7 +76,7 @@ export const getGameStatus = (game: {
  * @param ms - Duration in milliseconds.
  * @returns A formatted string like "1d 3h 24m 5s".
  */
-const formatDuration = (ms: number): string => {
+export const formatDuration = (ms: number): string => {
   const seconds = Math.floor(ms / 1000);
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
@@ -141,26 +141,3 @@ export const formatTimeElapsed = (
   const elapsedMs = getTimeElapsed(startDate, now);
   return elapsedMs === null ? "-" : formatDuration(elapsedMs);
 };
-
-/**
- * Returns a formatted string with remaining time.
- *
- * @param startDate - Start time as UNIX timestamp or Date.
- * @param duration - Duration in seconds.
- * @param now - Optionally provide current time for controlled updates.
- * @returns A string like "2m 43s" or "Timeout reached".
- */
-export const formatTimeRemaining = (
-  startDate: number | null | Date,
-  duration: number,
-  now: number = Date.now()
-): string => {
-  const remainingMs = getTimeRemaining(startDate, duration, now);
-
-  if (remainingMs === null) return "-";
-  if (remainingMs === 0) return "Timeout reached";
-
-  return formatDuration(remainingMs);
-};
-
-export { formatDuration };

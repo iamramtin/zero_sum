@@ -16,16 +16,20 @@ export const CONSTANTS = {
   CHAINLINK_FEED_ADDRESS: "669U43LNHx7LsVj95uYksnhXUfWKDsdzVqev3V4Jpw3P", // ETH/USD price feed on devnet
 
   FEED_DECIMALS: 8, // To format into readable price
-  PRICE_CHANGE_THRESHOLD: 5, // 5% threshold to win
-  JOIN_PRICE_THRESHOLD: 1, // 1% threshold to join
+
+  GAME_TIMEOUT_SECONDS: 30 * 60, // 30 minutes in seconds
   ENTRY_AMOUNT: 1000, // 1000 USDC
-  GAME_TIMEOUT: 30 * 60 * 1000, // 30 minutes in milliseconds
+  MAX_JOIN_PRICE_MOVEMENT: 1, // 1% threshold to join
+  WIN_PRICE_THRESHOLD: 5, // 5% threshold to win
+
+  // TODO: for testing - remove
+  // GAME_TIMEOUT_SECONDS: 2 * 60, // 2 mins in seconds - for testing
+  // MAX_JOIN_PRICE_MOVEMENT: 10, // 10% threshold to join
+  // WIN_PRICE_THRESHOLD: 1, // 1% threshold to win - for testing
 
   // USDC token address - update with actual USDC token address on target network
   // https://spl-token-faucet.com/?token-name=USDC
   USDC_MINT: new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"),
 };
-
-
 
 // TODO: SEED NEEDS TO USE SAME TOKEN MINT!

@@ -7,6 +7,7 @@ import { OpenGamesProps } from "../types";
 import { useZeroSumProgram } from "../zero_sum-data-access";
 import { PublicKey } from "@solana/web3.js";
 import { useState } from "react";
+import { formatUnixTimestampBN } from "../utils/utils";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 
@@ -83,166 +84,175 @@ export function OpenGames({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {openGames.map((game, index) => {
-                const opponentPrediction = game.initiatorPrediction;
-                const yourPrediction =
-                  "increase" in opponentPrediction
-                    ? { decrease: {} }
-                    : { increase: {} };
+              {openGames
+                .sort(
+                  (a, b) =>
+                    formatUnixTimestampBN(b.createdAt).getTime() -
+                    formatUnixTimestampBN(a.createdAt).getTime()
+                )
+                .map((game, index) => {
+                  const opponentPrediction = game.initiatorPrediction;
+                  const yourPrediction =
+                    "increase" in opponentPrediction
+                      ? { decrease: {} }
+                      : { increase: {} };
 
-                const isIncrease = "increase" in opponentPrediction;
+                  const isIncrease = "increase" in opponentPrediction;
 
-                const priceChange =
-                  priceData?.price !== undefined
-                    ? calculatePriceChange(priceData.price, game.initialPrice)
-                    : 0;
+                  const priceChange =
+                    priceData?.price !== undefined
+                      ? calculatePriceChange(priceData.price, game.initialPrice)
+                      : 0;
 
-                const canJoin =
-                  Math.abs(priceChange) <= CONSTANTS.JOIN_PRICE_THRESHOLD;
+                  const canJoin =
+                    Math.abs(priceChange) <= CONSTANTS.MAX_JOIN_PRICE_MOVEMENT;
 
-                const entryAmount = game.entryAmount.toNumber() / 1_000_000;
+                  const entryAmount = game.entryAmount.toNumber() / 1_000_000;
 
-                return (
-                  <tr key={game.gameId.toString()} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {index + 1}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {game.gameId.toString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[120px] truncate">
-                      {game.initiator.toString().substring(0, 8)}...
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {isIncrease ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          <svg
-                            className="mr-1 h-3 w-3 text-green-600"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 15l7-7 7 7"
-                            />
-                          </svg>
-                          Increase
+                  return (
+                    <tr
+                      key={game.gameId.toString()}
+                      className="hover:bg-gray-50"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {index + 1}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {game.gameId.toString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[120px] truncate">
+                        {game.initiator.toString().substring(0, 8)}...
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {isIncrease ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <svg
+                              className="mr-1 h-3 w-3 text-green-600"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 15l7-7 7 7"
+                              />
+                            </svg>
+                            Increase
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            <svg
+                              className="mr-1 h-3 w-3 text-red-600"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                            Decrease
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        {"increase" in yourPrediction ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <svg
+                              className="mr-1 h-3 w-3 text-green-600"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 15l7-7 7 7"
+                              />
+                            </svg>
+                            Increase
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            <svg
+                              className="mr-1 h-3 w-3 text-red-600"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                            Decrease
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${game.initialPrice.toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {entryAmount.toString()} USDC
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            canJoin
+                              ? "bg-green-100 text-green-800"
+                              : "bg-yellow-100 text-yellow-800"
+                          }`}
+                        >
+                          {priceChange > 0 ? "+" : ""}
+                          {priceChange.toFixed(2)}%
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          <svg
-                            className="mr-1 h-3 w-3 text-red-600"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="relative group inline-block">
+                          <button
+                            onClick={() =>
+                              handleJoin(game.gameId, game.initiator)
+                            }
+                            disabled={
+                              loadingStates[game.gameId.toString()] ===
+                                "joining" ||
+                              !canJoin ||
+                              !!game.startedAt ||
+                              !!game.closedAt ||
+                              !!game.cancelledAt
+                            }
+                            className="border border-blue-500 text-blue-500 bg-blue-50 hover:bg-blue-100 px-3 py-1 text-sm rounded-lg disabled:opacity-50"
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 9l-7 7-7-7"
-                            />
-                          </svg>
-                          Decrease
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {"increase" in yourPrediction ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          <svg
-                            className="mr-1 h-3 w-3 text-green-600"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 15l7-7 7 7"
-                            />
-                          </svg>
-                          Increase
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          <svg
-                            className="mr-1 h-3 w-3 text-red-600"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 9l-7 7-7-7"
-                            />
-                          </svg>
-                          Decrease
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ${game.initialPrice.toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {entryAmount.toString()} USDC
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          canJoin
-                            ? "bg-green-100 text-green-800"
-                            : "bg-yellow-100 text-yellow-800"
-                        }`}
-                      >
-                        {priceChange > 0 ? "+" : ""}
-                        {priceChange.toFixed(2)}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="relative group inline-block">
-                        <button
-                          onClick={() =>
-                            handleJoin(game.gameId, game.initiator)
-                          }
-                          disabled={
-                            loadingStates[game.gameId.toString()] ===
-                              "joining" ||
-                            !canJoin ||
+                            {loadingStates[game.gameId.toString()] === "joining"
+                              ? "Joining..."
+                              : game.closedAt
+                              ? "Joined"
+                              : "Join"}
+                          </button>
+
+                          {(!canJoin ||
                             !!game.startedAt ||
                             !!game.closedAt ||
-                            !!game.cancelledAt
-                          }
-                          className="border border-blue-500 text-blue-500 bg-blue-50 hover:bg-blue-100 px-3 py-1 text-sm rounded-lg disabled:opacity-50"
-                        >
-                          {loadingStates[game.gameId.toString()] === "joining"
-                            ? "Joining..."
-                            : game.closedAt
-                            ? "Joined"
-                            : "Join"}
-                        </button>
-
-                        {(!canJoin ||
-                          !!game.startedAt ||
-                          !!game.closedAt ||
-                          !!game.cancelledAt) && (
-                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
-                            Price movement
-                            {priceChange > 0 ? " above " : " below "}{" "}
-                            {CONSTANTS.JOIN_PRICE_THRESHOLD}%
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                            !!game.cancelledAt) && (
+                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
+                              Price movement
+                              {priceChange > 0 ? " above " : " below "}{" "}
+                              {CONSTANTS.MAX_JOIN_PRICE_MOVEMENT}%
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>

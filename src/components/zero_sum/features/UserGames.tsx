@@ -6,16 +6,17 @@ import { CONSTANTS } from "../constants";
 import { useZeroSumProgram } from "../zero_sum-data-access";
 import { UserGamesProps } from "../types";
 import {
-  formatTimeRemaining,
+  formatDuration,
   formatUnixTimestampBN,
   getGameStatus,
+  getTimeRemaining,
   getUserPrediction,
   isDecrease,
   isIncrease,
 } from "../utils/utils";
 import { renderStatusTag } from "../utils/getGameStatus";
 import { PublicKey } from "@solana/web3.js";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 
@@ -146,16 +147,27 @@ export function UserGames({
 
                   const canClose =
                     game.challenger &&
-                    Math.abs(priceChange) >= CONSTANTS.PRICE_CHANGE_THRESHOLD;
+                    Math.abs(priceChange) >= CONSTANTS.WIN_PRICE_THRESHOLD;
 
                   const isWinning =
                     canClose &&
                     ((priceChange > 0 && isIncrease(userPrediction)) ||
                       (priceChange < 0 && isDecrease(userPrediction)));
 
-                  const gameAge =
-                    Date.now() - (startedAt || createdAt).getTime();
-                  const canDraw = gameAge >= CONSTANTS.GAME_TIMEOUT;
+                  const timeRemaining = getTimeRemaining(
+                    startedAt,
+                    CONSTANTS.GAME_TIMEOUT_SECONDS,
+                    timeNow
+                  );
+
+                  const timeRemainingStr =
+                    timeRemaining === 0
+                      ? "Timeout reached"
+                      : timeRemaining !== null
+                      ? formatDuration(timeRemaining)
+                      : "-";
+
+                  const canDraw = timeRemaining !== 0;
 
                   return (
                     <tr
@@ -190,11 +202,7 @@ export function UserGames({
                         {createdAt.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
-                        {formatTimeRemaining(
-                          startedAt,
-                          CONSTANTS.GAME_TIMEOUT,
-                          timeNow
-                        )}
+                        {timeRemainingStr}
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <span
@@ -228,7 +236,7 @@ export function UserGames({
                               ? "Cancelled"
                               : "Cancel"}
                           </button>
-                        ) : isWinning ? (
+                        ) : canClose ? (
                           <button
                             onClick={() =>
                               handleClose(game.gameId, game.initiator)
@@ -236,6 +244,7 @@ export function UserGames({
                             disabled={
                               loadingStates[game.gameId.toString()] ===
                                 "closing" ||
+                              !isWinning ||
                               !game.startedAt ||
                               !!game.closedAt ||
                               !!game.cancelledAt
@@ -246,9 +255,9 @@ export function UserGames({
                               ? "Closing..."
                               : game.closedAt
                               ? "Closed"
-                              : "Claim Win"}
+                              : "Close"}
                           </button>
-                        ) : canDraw ? (
+                        ) : (
                           <button
                             onClick={() =>
                               handleDraw(game.gameId, game.initiator)
@@ -256,6 +265,7 @@ export function UserGames({
                             disabled={
                               loadingStates[game.gameId.toString()] ===
                                 "drawing" ||
+                              canDraw ||
                               !game.startedAt ||
                               !!game.closedAt ||
                               !!game.cancelledAt
@@ -268,12 +278,6 @@ export function UserGames({
                               ? "Drawn"
                               : "Draw"}
                           </button>
-                        ) : (
-                          <span className="text-gray-500 italic text-sm">
-                            {canClose
-                              ? "You are not winning"
-                              : `Waiting for ${CONSTANTS.PRICE_CHANGE_THRESHOLD}% move`}
-                          </span>
                         )}
                       </td>
                     </tr>
