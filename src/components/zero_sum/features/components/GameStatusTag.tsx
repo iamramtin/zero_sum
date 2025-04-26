@@ -3,7 +3,7 @@
  * @param status - The game status string.
  * @returns A styled span element representing the status.
  */
-export const renderStatusTag = (status: string): JSX.Element => {
+export const GameStatusTag = (status: string): JSX.Element => {
   const baseClass =
     "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap";
 

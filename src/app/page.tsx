@@ -1,5 +1,5 @@
-import DashboardFeature from '@/components/dashboard/dashboard-feature'
+import ZeroSumGame from "@/components/zero_sum/zero_sum-game";
 
 export default function Page() {
-  return <DashboardFeature />
+  return <ZeroSumGame />;
 }

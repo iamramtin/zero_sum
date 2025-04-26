@@ -1,20 +1,22 @@
 use anchor_lang::prelude::*;
 
-use crate::common::{CustomError, PricePrediction, GAME_TIMEOUT_SECONDS};
+use crate::common::{CustomError, GameStatus, PricePrediction, GAME_TIMEOUT_SECONDS};
 
 #[account]
 #[derive(InitSpace)]
 pub struct GameState {
-    pub initiator: Pubkey,                     // Game creator address
-    pub initiator_prediction: PricePrediction, // First player's prediction
-    pub challenger: Option<Pubkey>,            // Joining player address
-    pub entry_amount: u64,                     // Amount to enter the game (in USDC)
-    pub initial_price: f64,                    // Price at game creation
-    pub created_at: i64,                       // Timestamp of game creation
-    pub started_at: Option<i64>,               // Timestamp when challenger joined and game started
-    pub closed_at: Option<i64>,                // Timestamp when game was closed
-    pub cancelled_at: Option<i64>,             // Timestamp if game was canceled
-    pub game_id: u64,                          // Unique identifier for the game
+    pub game_id: u64,                                // Unique identifier for the game
+    pub initiator: Pubkey,                           // Game creator address
+    pub initiator_prediction: PricePrediction,       // First player's prediction
+    pub challenger: Option<Pubkey>,                  // Joining player address
+    pub winning_prediction: Option<PricePrediction>, // Winning player's prediction
+    pub entry_amount: u64,                           // Amount to enter the game (in USDC)
+    pub initial_price: f64,                          // Price at game creation
+    pub final_price: Option<f64>,                    // Price at game completion
+    pub created_at: i64,                             // Timestamp of game creation
+    pub started_at: Option<i64>, // Timestamp when challenger joined and game started
+    pub closed_at: Option<i64>,  // Timestamp when game was closed
+    pub status: GameStatus,      // Status of the game
     pub bump: u8,
 }
 

@@ -1,35 +1,43 @@
-import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 
 export const CONSTANTS = {
-  // https://docs.chain.link/data-feeds/solana/using-data-feeds-off-chain
-  CHAINLINK_OFFCHAIN_PROGRAM_ID: new anchor.web3.PublicKey(
-    "cjg3oHmg9uuPsP8D6g29NWvhySJkdYdAo9D25PRbKXJ"
+  // Network settings
+  SOLANA_NETWORK: process.env.SOLANA_NETWORK || "devnet",
+
+  // Chainlink program IDs
+  CHAINLINK_OFFCHAIN_PROGRAM_ID: new PublicKey(
+    process.env.CHAINLINK_OFFCHAIN_PROGRAM_ID ||
+      "cjg3oHmg9uuPsP8D6g29NWvhySJkdYdAo9D25PRbKXJ"
+  ),
+  CHAINLINK_ONCHAIN_PROGRAM_ID: new PublicKey(
+    process.env.CHAINLINK_ONCHAIN_PROGRAM_ID ||
+      "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
+  ),
+  CHAINLINK_FEED_ADDRESS: new PublicKey(
+    process.env.CHAINLINK_FEED_ADDRESS ||
+      "669U43LNHx7LsVj95uYksnhXUfWKDsdzVqev3V4Jpw3P"
   ),
 
-  // https://docs.chain.link/data-feeds/solana/using-data-feeds-solana
-  CHAINLINK_ONCHAIN_PROGRAM_ID: new anchor.web3.PublicKey(
-    "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny"
-  ),
-
-  // https://docs.chain.link/data-feeds/price-feeds/addresses?network=solana
-  CHAINLINK_FEED_ADDRESS: "669U43LNHx7LsVj95uYksnhXUfWKDsdzVqev3V4Jpw3P", // ETH/USD price feed on devnet
-
+  // Format settings
   FEED_DECIMALS: 8, // To format into readable price
 
-  GAME_TIMEOUT_SECONDS: 30 * 60, // 30 minutes in seconds
-  ENTRY_AMOUNT: 1000, // 1000 USDC
-  MAX_JOIN_PRICE_MOVEMENT: 1, // 1% threshold to join
-  WIN_PRICE_THRESHOLD: 5, // 5% threshold to win
+  // Game settings
+  GAME_TIMEOUT_SECONDS: parseInt(process.env.GAME_TIMEOUT_SECONDS || "86400"), // 24 hours in seconds
+  ENTRY_AMOUNT: parseInt(process.env.ENTRY_AMOUNT || "1000"), // 1000 USDC
+  MAX_JOIN_PRICE_MOVEMENT: parseFloat(
+    process.env.MAX_JOIN_PRICE_MOVEMENT || "1"
+  ), // 1% max change for joining
+  WIN_PRICE_THRESHOLD: parseFloat(process.env.WIN_PRICE_THRESHOLD || "5"), // 5% movement for win
 
   // TODO: for testing - remove
   // GAME_TIMEOUT_SECONDS: 2 * 60, // 2 mins in seconds - for testing
+  // ENTRY_AMOUNT: 1000, // 1000 USDC
   // MAX_JOIN_PRICE_MOVEMENT: 10, // 10% threshold to join
-  // WIN_PRICE_THRESHOLD: 1, // 1% threshold to win - for testing
+  // WIN_PRICE_THRESHOLD: 0.1, // 1% threshold to win - for testing
 
-  // USDC token address - update with actual USDC token address on target network
-  // https://spl-token-faucet.com/?token-name=USDC
-  USDC_MINT: new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"),
+  // USDC token address
+  USDC_MINT: new PublicKey(
+    process.env.NEXT_PUBLIC_USDC_MINT ||
+      "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"
+  ),
 };
-
-// TODO: SEED NEEDS TO USE SAME TOKEN MINT!

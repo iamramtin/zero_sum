@@ -67,5 +67,10 @@ pub fn has_price_moved_by_percentage(
         0
     };
 
+    msg!("Initial price: {}", initial_price);
+    msg!("Final price: {}", current_price);
+    msg!("Percentage change: {}", percentage_change);
+    msg!("Threshold exceeded: {}", threshold_exceeded);
+
     Ok((threshold_exceeded, direction, percentage_change))
 }

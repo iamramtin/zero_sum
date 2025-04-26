@@ -9,6 +9,23 @@ export const PredictionIncrease: PricePrediction = { increase: {} };
 export const PredictionDecrease: PricePrediction = { decrease: {} };
 
 /**
+ * Type for game status
+ */
+export type GameStatus =
+  | { active: {} }
+  | { pending: {} }
+  | { complete: {} }
+  | { draw: {} }
+  | { cancelled: {} };
+export const GameStatusActive: GameStatus = { active: {} };
+export const GameStatusPending: GameStatus = { pending: {} };
+export const GameStatusComplete: GameStatus = {
+  complete: { increase: {} },
+};
+export const GameStatusDraw: GameStatus = { draw: {} };
+export const GameStatusCancelled: GameStatus = { cancelled: {} };
+
+/**
  * Type for price data
  */
 export interface PriceData {
@@ -25,13 +42,21 @@ export interface GameState {
   initiator: PublicKey;
   initiatorPrediction: PricePrediction;
   challenger?: PublicKey | null;
+  winningPrediction?: PricePrediction | null;
   entryAmount: BN;
   initialPrice: number;
+  finalPrice?: number | null;
   createdAt: BN;
   startedAt?: BN | null;
   closedAt?: BN | null;
-  cancelledAt?: BN | null;
+  status: GameStatus;
 }
+
+/**
+ * Type of action a user can perform on a game
+
+ */
+export type GameActionType = "close" | "cancel" | "draw";
 
 /**
  * Props type for the GameActions hook
@@ -71,7 +96,6 @@ export interface PriceMonitorProps {
  */
 export interface CreateGameProps {
   connected: boolean;
-  // creating: boolean;
   priceData: PriceData | null;
 }
 
@@ -91,6 +115,17 @@ export interface OpenGamesProps {
   openGames: GameState[];
   publicKey: PublicKey | null;
   priceData: PriceData | null;
+}
+
+/**
+ * Props for CommunityGames component
+ */
+export interface CommunityGamesProps {
+  allGames: GameState[];
+  userGames: GameState[];
+  openGames: GameState[];
+  priceData: PriceData | null;
+  publicKey: PublicKey | null;
 }
 
 /**

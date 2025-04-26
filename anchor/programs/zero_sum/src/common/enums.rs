@@ -6,9 +6,20 @@ pub enum PricePrediction {
     Decrease,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone, Copy, PartialEq)]
-pub enum GameOutcome {
-    Win(PricePrediction), // Indicates which prediction won
-    Draw,                 // Timeout or other draw condition
-    Cancel,               // Initiator withdrew before anyone joined
+#[derive(InitSpace, AnchorSerialize, AnchorDeserialize, Debug, Clone, Copy, PartialEq)]
+pub enum GameStatus {
+    /// Game is active and awaiting completion
+    Active,
+
+    /// Game created, but waiting for another player to join
+    Pending,
+
+    /// Game ended with a winner; contains the winning prediction
+    Complete(PricePrediction),
+
+    /// Game ended in a draw due to timeout or other draw condition
+    Draw,
+
+    /// Game was cancelled before another player joined
+    Cancelled,
 }

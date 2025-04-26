@@ -47,7 +47,7 @@ export interface DrawGameArgs {
   initiator: PublicKey;
 }
 
-export interface WithdrawGameArgs {
+export interface CancelGameArgs {
   gameId: BN;
 }
 
@@ -115,39 +115,6 @@ export function useZeroSumProgram(priceData: PriceData | null) {
     []
   );
 
-  // Query to fetch all game accounts created by the connected wallet
-  const getUserGames = useQuery({
-    queryKey: [
-      "games",
-      "userGames",
-      { cluster, publicKey: publicKey?.toString() },
-    ],
-    queryFn: async () => {
-      if (!publicKey) return [];
-
-      try {
-        // Fetch all game state accounts where authority = publicKey
-        const accounts = await program.account.gameState.all([
-          {
-            memcmp: {
-              offset: ANCHOR_DISCRIMINATOR_SIZE,
-              bytes: publicKey.toBase58(),
-            },
-          },
-        ]);
-
-        return accounts.map((account) => ({
-          publicKey: account.publicKey,
-          ...account.account,
-        }));
-      } catch (error) {
-        console.error("Error fetching my games:", error);
-        return [];
-      }
-    },
-    enabled: !!publicKey && !!provider,
-  });
-
   // Query to fetch all game accounts
   const getGames = useQuery({
     queryKey: ["games", "allGames", { cluster }],
@@ -172,7 +139,6 @@ export function useZeroSumProgram(priceData: PriceData | null) {
   const createGame = useMutation<string, Error, CreateGameArgs>({
     mutationKey: ["game", "create", { cluster }],
     mutationFn: async ({ gameId, prediction }) => {
-      // TODO: Extract into own function
       if (!publicKey || !connected || !anchorWallet) {
         toast.error("Please connect your wallet first");
         throw new Error("Wallet not connected");
@@ -221,7 +187,10 @@ export function useZeroSumProgram(priceData: PriceData | null) {
   const joinGame = useMutation<string, Error, JoinGameArgs>({
     mutationKey: ["game", "join", { cluster }],
     mutationFn: async ({ gameId, initiator }) => {
-      if (!publicKey) throw new Error("Wallet not connected");
+      if (!publicKey || !connected || !anchorWallet) {
+        toast.error("Please connect your wallet first");
+        throw new Error("Wallet not connected");
+      }
 
       try {
         // Derive the game state PDA
@@ -289,23 +258,12 @@ export function useZeroSumProgram(priceData: PriceData | null) {
   const closeGame = useMutation<string, Error, CloseGameArgs>({
     mutationKey: ["close", "game", { cluster }],
     mutationFn: async ({ gameId, initiator }) => {
-      if (!publicKey) throw new Error("Wallet not connected");
+      if (!publicKey || !connected || !anchorWallet) {
+        toast.error("Please connect your wallet first");
+        throw new Error("Wallet not connected");
+      }
 
       try {
-        // Derive the game state PDA
-        const [gameStatePda] = findGameStatePda(
-          initiator,
-          gameId,
-          program.programId
-        );
-
-        // Derive the vault PDA
-        const [vaultPda] = findGameVaultPda(
-          initiator,
-          gameId,
-          program.programId
-        );
-
         // Get winner's USDC token account
         const winnerTokenAccount = await connection.getTokenAccountsByOwner(
           publicKey,
@@ -325,10 +283,37 @@ export function useZeroSumProgram(priceData: PriceData | null) {
             chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
             chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
           })
-          .rpc();
+          .transaction();
+
+        const txSignature = await provider.sendAndConfirm(tx, []);
+
+        const txDetails = await provider.connection.getParsedTransaction(
+          txSignature,
+          {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+          }
+        );
+
+        if (txDetails?.meta?.logMessages) {
+          for (const log of txDetails.meta.logMessages) {
+            if (log.startsWith("Program log: Program data: ")) {
+              const base64Data = log.replace("Program log: Program data: ", "");
+              const event = program.coder.events.decode(
+                Buffer.from(base64Data, "base64").toString()
+              );
+              console.log("Anchor Event:", event);
+            }
+          }
+        }
+
+        if (txDetails?.meta?.logMessages) {
+          console.log("Program Logs:");
+          txDetails.meta.logMessages.forEach((log) => console.log(log));
+        }
 
         console.log(`Game with ID ${gameId} closed with signature:`, tx);
-        return tx;
+        return txSignature;
       } catch (error: any) {
         console.error("Error ending game:", error);
         if (error.logs) {
@@ -348,18 +333,14 @@ export function useZeroSumProgram(priceData: PriceData | null) {
   const drawGame = useMutation<string, Error, DrawGameArgs>({
     mutationKey: ["draw", "game", { cluster }],
     mutationFn: async ({ gameId, initiator }) => {
-      if (!publicKey) throw new Error("Wallet not connected");
+      if (!publicKey || !connected || !anchorWallet) {
+        toast.error("Please connect your wallet first");
+        throw new Error("Wallet not connected");
+      }
 
       try {
         // Derive the game state PDA
         const [gameStatePda] = findGameStatePda(
-          initiator,
-          gameId,
-          program.programId
-        );
-
-        // Derive the vault PDA
-        const [vaultPda] = findGameVaultPda(
           initiator,
           gameId,
           program.programId
@@ -418,26 +399,12 @@ export function useZeroSumProgram(priceData: PriceData | null) {
     onError: (error) => toast.error(`Failed to end game: ${error}`),
   });
 
-  const cancelGame = useMutation<string, Error, WithdrawGameArgs>({
+  const cancelGame = useMutation<string, Error, CancelGameArgs>({
     mutationKey: ["cancel", "game", { cluster }],
     mutationFn: async ({ gameId }) => {
       if (!publicKey) throw new Error("Wallet not connected");
 
       try {
-        // Derive the game state PDA
-        const [gameStatePda] = findGameStatePda(
-          publicKey,
-          gameId,
-          program.programId
-        );
-
-        // Derive the vault PDA
-        const [vaultPda] = findGameVaultPda(
-          publicKey,
-          gameId,
-          program.programId
-        );
-
         // Get initiator's USDC token account
         const initiatorTokenAccount = await connection.getTokenAccountsByOwner(
           publicKey,
@@ -449,7 +416,7 @@ export function useZeroSumProgram(priceData: PriceData | null) {
         }
 
         const tx = await program.methods
-          .withdraw(gameId)
+          .cancelGame(gameId)
           .accounts({
             initiator: publicKey,
             initiatorTokenAccount: initiatorTokenAccount.value[0].pubkey,
@@ -457,10 +424,10 @@ export function useZeroSumProgram(priceData: PriceData | null) {
           })
           .rpc();
 
-        console.log(`Game with ID ${gameId} withdrawn with signature:`, tx);
+        console.log(`Game with ID ${gameId} cancelled with signature:`, tx);
         return tx;
       } catch (error: any) {
-        console.error("Error withdrawing from game:", error);
+        console.error("Error cancelling game:", error);
         if (error.logs) {
           console.error("Transaction logs:", error.logs);
         }
@@ -480,7 +447,6 @@ export function useZeroSumProgram(priceData: PriceData | null) {
     programId,
     calculatePriceChange,
     getProgramAccount,
-    getUserGames,
     getGames,
     createGame,
     joinGame,

@@ -5,7 +5,6 @@ import {
   PublicKey,
   Keypair,
   LAMPORTS_PER_SOL,
-  Connection,
 } from "@solana/web3.js";
 import {
   createMint,
@@ -192,6 +191,7 @@ describe("zero_sum", () => {
       ).amount;
       const expectedBalance = initialBalance - BigInt(1000000000);
       expect(afterBalance.toString()).toBe(expectedBalance.toString());
+      expect(gameStateAccount.status).toHaveProperty("pending");
 
       console.log(
         "Game created successfully with price:",
@@ -239,7 +239,7 @@ describe("zero_sum", () => {
 
       // Withdraw from game
       const tx = await program.methods
-        .withdraw(gameId)
+        .cancelGame(gameId)
         .accounts({
           initiator: initiator.publicKey,
           initiatorTokenAccount,
@@ -252,8 +252,8 @@ describe("zero_sum", () => {
 
       // Verify game state
       gameStateAccount = await program.account.gameState.fetch(gameState);
-      expect(gameStateAccount.cancelledAt).not.toBeNull();
       expect(gameStateAccount.closedAt).not.toBeNull();
+      expect(gameStateAccount.status).toHaveProperty("cancelled");
 
       // Check that tokens were returned to initiator
       const afterBalance = (

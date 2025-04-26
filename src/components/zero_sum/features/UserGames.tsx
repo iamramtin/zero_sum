@@ -1,24 +1,33 @@
 "use client";
 
-import "react-toastify/dist/ReactToastify.css";
 import BN from "bn.js";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { PublicKey } from "@solana/web3.js";
 import { CONSTANTS } from "../constants";
 import { useZeroSumProgram } from "../zero_sum-data-access";
-import { UserGamesProps } from "../types";
+import { GameActionType, UserGamesProps, GameState } from "../types";
 import {
   formatDuration,
   formatUnixTimestampBN,
-  getGameStatus,
+  getStatusText,
   getTimeRemaining,
   getUserPrediction,
-  isDecrease,
-  isIncrease,
+  isDecreasePrediction,
+  isIncreasePrediction,
+  isCompleteStatus,
+  arePredictionsEqual,
 } from "../utils/utils";
-import { renderStatusTag } from "../utils/getGameStatus";
-import { PublicKey } from "@solana/web3.js";
-import { useEffect, useState } from "react";
 
-require("@solana/wallet-adapter-react-ui/styles.css");
+import "@solana/wallet-adapter-react-ui/styles.css";
+import "react-toastify/dist/ReactToastify.css";
+import { GameStatusTag } from "./components/GameStatusTag";
+import { PredictionBadge } from "./components/PredictionBadge";
+import { ActionButton } from "./components/ActionButton";
+import { EmptyGamesState } from "./components/EmptyGamesState";
+import { TableHeader } from "./components/TableHeader";
+import { VictoryCelebration } from "./components/VictoryCelebration";
+
+type LoadingStateType = Record<string, GameActionType>;
 
 export function UserGames({
   userGames,
@@ -28,282 +37,326 @@ export function UserGames({
   const { calculatePriceChange, cancelGame, drawGame, closeGame } =
     useZeroSumProgram(priceData);
 
-  const [timeNow, setTimeNow] = useState(Date.now());
-  const [loadingStates, setLoadingStates] = useState<Record<string, string>>(
-    {}
-  );
+  const [timeNow, setTimeNow] = useState<number>(Date.now());
+  const [loadingStates, setLoadingStates] = useState<LoadingStateType>({});
+  const [showVictory, setShowVictory] = useState<boolean>(false);
+  const [victoryAmount, setVictoryAmount] = useState<string>("");
+  const [victoryGame, setVictoryGame] = useState<GameState | null>(null);
 
+  // Setup interval with proper cleanup
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeNow(Date.now());
-    }, 1000); // Update every second
-
-    return () => clearInterval(interval); // Cleanup on unmount
+    const interval = setInterval(() => setTimeNow(Date.now()), 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  const setLoading = (gameId: BN, type: string) => {
+  // Memoized table headings
+  const tableHeadings = useMemo<string[]>(
+    () => [
+      "#",
+      "Game ID",
+      "Created",
+      "Role",
+      "Prediction",
+      "Initial Price",
+      "Status",
+      "Time Remaining",
+      "Price Change",
+      "Action",
+    ],
+    []
+  );
+
+  // Load state handling functions
+  const setLoading = useCallback((gameId: BN, type: GameActionType): void => {
     setLoadingStates((prev) => ({ ...prev, [gameId.toString()]: type }));
-  };
+  }, []);
 
-  const clearLoading = (gameId: BN) => {
+  const clearLoading = useCallback((gameId: BN): void => {
     setLoadingStates((prev) => {
-      const updated = { ...prev };
-      delete updated[gameId.toString()];
-      return updated;
+      const newState = { ...prev };
+      delete newState[gameId.toString()];
+      return newState;
     });
-  };
+  }, []);
 
-  const handleClose = async (gameId: BN, initiator: PublicKey) => {
-    if (!publicKey || !gameId || loadingStates[gameId.toString()]) return;
-    try {
-      setLoading(gameId, "closing");
-      await closeGame.mutateAsync({ gameId, initiator });
-    } catch (err) {
-      console.error("Error closing game:", err);
-    } finally {
-      clearLoading(gameId);
-    }
-  };
+  // Handle game actions
+  const handleAction = useCallback(
+    async (action: GameActionType, game: GameState): Promise<void> => {
+      const gameId = game.gameId;
 
-  const handleCancel = async (gameId: BN) => {
-    if (!publicKey || !gameId || loadingStates[gameId.toString()]) return;
-    try {
-      setLoading(gameId, "cancelling");
-      await cancelGame.mutateAsync({ gameId });
-    } catch (err) {
-      console.error("Error cancelling game:", err);
-    } finally {
-      clearLoading(gameId);
-    }
-  };
+      if (!publicKey || !gameId || loadingStates[gameId.toString()]) return;
 
-  const handleDraw = async (gameId: BN, initiator: PublicKey) => {
-    if (!publicKey || !gameId || loadingStates[gameId.toString()]) return;
-    try {
-      setLoading(gameId, "drawing");
-      await drawGame.mutateAsync({ gameId, initiator });
-    } catch (err) {
-      console.error("Error drawing game:", err);
-    } finally {
-      clearLoading(gameId);
-    }
-  };
+      const actionMap: Record<GameActionType, any> = {
+        close: closeGame,
+        cancel: cancelGame,
+        draw: drawGame,
+      };
+
+      const mutation = actionMap[action];
+      if (!mutation) return;
+
+      try {
+        setLoading(gameId, action);
+        await mutation.mutateAsync({ gameId, initiator: game.initiator });
+
+        // If this was a close action and the user is winning, show the victory celebration
+        if (action === "close") {
+          const isInitiator =
+            game.initiator.toString() === publicKey?.toString();
+          const userPrediction = getUserPrediction(
+            game.initiatorPrediction,
+            isInitiator
+          );
+
+          // Calculate if user is winning
+          const priceChange =
+            priceData?.price !== undefined
+              ? calculatePriceChange(priceData.price, game.initialPrice)
+              : 0;
+
+          const isWinning =
+            (priceChange > Math.abs(CONSTANTS.WIN_PRICE_THRESHOLD) &&
+              isIncreasePrediction(userPrediction)) ||
+            (priceChange < -Math.abs(CONSTANTS.WIN_PRICE_THRESHOLD) &&
+              isDecreasePrediction(userPrediction));
+
+          if (isWinning) {
+            // Calculate the prize amount (entry amount * 2 - fees)
+            const entryAmount = game.entryAmount.toNumber() / 1_000_000; // Convert from lamports to USDC
+            // const prize = (entryAmount * 2 * 0.95).toFixed(2); // Assuming 5% fee
+            const prize = (entryAmount * 2).toFixed(2);
+
+            setVictoryAmount(prize);
+            setVictoryGame(game);
+            setShowVictory(true);
+          }
+        }
+      } catch (err) {
+        console.error(`Error during ${action}:`, err);
+      } finally {
+        clearLoading(gameId);
+      }
+    },
+    [
+      publicKey,
+      loadingStates,
+      closeGame,
+      cancelGame,
+      drawGame,
+      setLoading,
+      clearLoading,
+      priceData,
+      calculatePriceChange,
+    ]
+  );
+
+  // Handle victory celebration completion
+  const handleVictoryComplete = useCallback(() => {
+    setShowVictory(false);
+    setVictoryGame(null);
+  }, []);
+
+  // Sort games by creation date, newest first
+  const sortedGames = useMemo<GameState[]>(() => {
+    return [...userGames].sort(
+      (a, b) =>
+        formatUnixTimestampBN(b.createdAt).getTime() -
+        formatUnixTimestampBN(a.createdAt).getTime()
+    );
+  }, [userGames]);
+
+  // Render game rows
+  const renderGameRows = useCallback((): JSX.Element[] => {
+    return sortedGames.map((game, index) => {
+      const gameIdStr = game.gameId.toString();
+      const isInitiator = game.initiator.toString() === publicKey?.toString();
+      const createdAt = formatUnixTimestampBN(game.createdAt);
+      const startedAt = game.startedAt
+        ? formatUnixTimestampBN(game.startedAt)
+        : null;
+      const userPrediction = getUserPrediction(
+        game.initiatorPrediction,
+        isInitiator
+      );
+
+      // Calculate price change
+      const priceChange: number =
+        priceData?.price !== undefined
+          ? calculatePriceChange(priceData.price, game.initialPrice)
+          : 0;
+
+      // Calculate time remaining
+      const timeRemaining = getTimeRemaining(
+        startedAt,
+        CONSTANTS.GAME_TIMEOUT_SECONDS,
+        timeNow
+      );
+      const timeRemainingStr =
+        timeRemaining === 0
+          ? "Timeout reached"
+          : timeRemaining !== null
+          ? formatDuration(timeRemaining)
+          : "-";
+
+      // Determine if user is winning/won
+      const isWinning: boolean =
+        (priceChange > Math.abs(CONSTANTS.WIN_PRICE_THRESHOLD) &&
+          isIncreasePrediction(userPrediction)) ||
+        (priceChange < -Math.abs(CONSTANTS.WIN_PRICE_THRESHOLD) &&
+          isDecreasePrediction(userPrediction));
+
+      // Check if the game is complete
+      const isComplete = isCompleteStatus(game.status);
+
+      // For completed games, determine if user is winner using stored winning prediction
+      const userIsWinner =
+        isComplete && game.winningPrediction
+          ? arePredictionsEqual(game.winningPrediction, userPrediction)
+          : null;
+
+      // Set row background based on game status and outcome
+      let rowClass = isComplete
+        ? userIsWinner
+          ? "bg-green-50 hover:bg-green-100"
+          : "bg-red-50 hover:bg-red-100"
+        : "hover:bg-gray-50";
+
+      // Get the status text
+      const statusText = getStatusText(game.status);
+
+      // Determine if the game is the one that was just won (for highlighting)
+      const isRecentlyWon =
+        victoryGame && victoryGame.gameId.toString() === gameIdStr;
+      if (isRecentlyWon) {
+        rowClass = "bg-yellow-50 hover:bg-yellow-100 animate-pulse";
+      }
+
+      return (
+        <tr key={gameIdStr} className={rowClass}>
+          <td className="px-6 py-4 text-sm text-gray-500">{index + 1}</td>
+          <td className="px-6 py-4 font-medium text-sm text-gray-900">
+            {gameIdStr}
+          </td>
+          <td className="px-6 py-4 text-sm text-gray-500">
+            {createdAt.toLocaleString()}
+          </td>
+          <td className="px-6 py-4 text-sm text-gray-500">
+            {isInitiator ? "Initiator" : "Challenger"}
+          </td>
+          <td className="px-6 py-4 text-sm font-medium">
+            <PredictionBadge prediction={userPrediction} />
+          </td>
+          <td className="px-6 py-4 text-sm text-gray-500">
+            ${game.initialPrice.toFixed(2)}
+          </td>
+          <td className="px-6 py-4">{GameStatusTag(statusText)}</td>
+          <td className="px-6 py-4 text-sm text-gray-500">
+            {timeRemainingStr}
+          </td>
+          <td className="px-6 py-4 text-sm">
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                priceChange > 0
+                  ? "bg-green-100 text-green-800"
+                  : "bg-red-100 text-red-800"
+              }`}
+            >
+              {priceChange > 0 ? "+" : ""}
+              {priceChange.toFixed(2)}%
+            </span>
+          </td>
+          <td className="px-6 py-4 text-sm font-medium">
+            <ActionButton
+              game={game}
+              isWinning={isWinning}
+              timeRemaining={timeRemaining}
+              publicKey={publicKey}
+              onAction={handleAction}
+              loadingState={loadingStates[gameIdStr]}
+            />
+          </td>
+        </tr>
+      );
+    });
+  }, [
+    publicKey,
+    priceData,
+    sortedGames,
+    timeNow,
+    loadingStates,
+    victoryGame,
+    calculatePriceChange,
+    handleAction,
+  ]);
+
+  // Organize games by status for statistics
+  const gameStats = useMemo(() => {
+    const total = userGames.length;
+    const won = userGames.filter((game) => {
+      if (!isCompleteStatus(game.status)) return false;
+
+      const isInitiator = game.initiator.toString() === publicKey?.toString();
+      const userPrediction = getUserPrediction(
+        game.initiatorPrediction,
+        isInitiator
+      );
+
+      const userIsWinner = game.winningPrediction
+        ? arePredictionsEqual(game.winningPrediction, userPrediction)
+        : null;
+
+      return userIsWinner;
+    }).length;
+
+    const active = userGames.filter(
+      (game) => !isCompleteStatus(game.status)
+    ).length;
+
+    return { total, won, active };
+  }, [userGames, publicKey]);
 
   return (
     <div className="bg-white rounded-2xl shadow-lg p-6 md:col-span-3 border border-gray-100">
-      <h2 className="text-2xl font-semibold mb-4 text-gray-800">My Games</h2>
+      {showVictory && (
+        <VictoryCelebration
+          show={showVictory}
+          onComplete={handleVictoryComplete}
+          prize={`You won ${victoryAmount} USDC!`}
+        />
+      )}
+
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4">
+        <h2 className="text-2xl font-semibold text-gray-800">My Games</h2>
+
+        {userGames.length > 0 && (
+          <div className="flex flex-wrap gap-3 text-sm">
+            <div className="flex items-center">
+              <div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
+              <span className="text-gray-700">Total: {gameStats.total}</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+              <span className="text-gray-700">Won: {gameStats.won}</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-3 h-3 rounded-full bg-purple-500 mr-2"></div>
+              <span className="text-gray-700">Active: {gameStats.active}</span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {userGames.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                {[
-                  "#",
-                  "Game ID",
-                  "Your Role",
-                  "Your Prediction",
-                  "Initial Price",
-                  "Status",
-                  "Created At",
-                  "Time Remaining",
-                  "Price Change",
-                  "Action",
-                ].map((label) => (
-                  <th
-                    key={label}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
-                  >
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+            <TableHeader headings={tableHeadings} />
             <tbody className="bg-white divide-y divide-gray-200">
-              {userGames
-                .sort(
-                  (a, b) =>
-                    formatUnixTimestampBN(b.createdAt).getTime() -
-                    formatUnixTimestampBN(a.createdAt).getTime()
-                )
-                .map((game, index) => {
-                  const isInitiator =
-                    game.initiator.toString() === publicKey?.toString();
-                  const createdAt = formatUnixTimestampBN(game.createdAt);
-                  const startedAt = game.startedAt
-                    ? formatUnixTimestampBN(game.startedAt)
-                    : null;
-
-                  const userPrediction = getUserPrediction(
-                    game.initiatorPrediction,
-                    isInitiator
-                  );
-
-                  const status = getGameStatus(game);
-                  const priceChange =
-                    priceData?.price !== undefined
-                      ? calculatePriceChange(priceData.price, game.initialPrice)
-                      : 0;
-
-                  const canClose =
-                    game.challenger &&
-                    Math.abs(priceChange) >= CONSTANTS.WIN_PRICE_THRESHOLD;
-
-                  const isWinning =
-                    canClose &&
-                    ((priceChange > 0 && isIncrease(userPrediction)) ||
-                      (priceChange < 0 && isDecrease(userPrediction)));
-
-                  const timeRemaining = getTimeRemaining(
-                    startedAt,
-                    CONSTANTS.GAME_TIMEOUT_SECONDS,
-                    timeNow
-                  );
-
-                  const timeRemainingStr =
-                    timeRemaining === 0
-                      ? "Timeout reached"
-                      : timeRemaining !== null
-                      ? formatDuration(timeRemaining)
-                      : "-";
-
-                  const canDraw = timeRemaining !== 0;
-
-                  return (
-                    <tr
-                      key={game.gameId.toString()}
-                      className="hover:bg-gray-50"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {index + 1}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {game.gameId.toString()}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {isInitiator ? "Initiator" : "Challenger"}
-                      </td>
-                      <td className="px-6 py-4 text-sm font-medium">
-                        {isIncrease(userPrediction) ? (
-                          <span className="text-green-800 bg-green-100 px-2 py-1 rounded-full text-xs font-medium inline-flex items-center">
-                            ▲ Increase
-                          </span>
-                        ) : (
-                          <span className="text-red-800 bg-red-100 px-2 py-1 rounded-full text-xs font-medium inline-flex items-center">
-                            ▼ Decrease
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        ${game.initialPrice.toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4">{renderStatusTag(status)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {createdAt.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {timeRemainingStr}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            priceChange > 0
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-yellow-800"
-                          }`}
-                        >
-                          {priceChange > 0 ? "+" : ""}
-                          {priceChange.toFixed(2)}%
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm font-medium">
-                        {!game.challenger && isInitiator ? (
-                          <button
-                            onClick={() => handleCancel(game.gameId)}
-                            disabled={
-                              loadingStates[game.gameId.toString()] ===
-                                "cancelling" ||
-                              !!game.startedAt ||
-                              !!game.closedAt ||
-                              !!game.cancelledAt
-                            }
-                            className="text-yellow-600 border border-yellow-500 bg-yellow-50 hover:bg-yellow-100 px-3 py-1 rounded-lg text-sm disabled:opacity-50"
-                          >
-                            {loadingStates[game.gameId.toString()] ===
-                            "cancelling"
-                              ? "Cancelling..."
-                              : game.cancelledAt
-                              ? "Cancelled"
-                              : "Cancel"}
-                          </button>
-                        ) : canClose ? (
-                          <button
-                            onClick={() =>
-                              handleClose(game.gameId, game.initiator)
-                            }
-                            disabled={
-                              loadingStates[game.gameId.toString()] ===
-                                "closing" ||
-                              !isWinning ||
-                              !game.startedAt ||
-                              !!game.closedAt ||
-                              !!game.cancelledAt
-                            }
-                            className="text-purple-600 border border-purple-500 bg-purple-50 hover:bg-purple-100 px-3 py-1 rounded-lg text-sm disabled:opacity-50"
-                          >
-                            {loadingStates[game.gameId.toString()] === "closing"
-                              ? "Closing..."
-                              : game.closedAt
-                              ? "Closed"
-                              : "Close"}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() =>
-                              handleDraw(game.gameId, game.initiator)
-                            }
-                            disabled={
-                              loadingStates[game.gameId.toString()] ===
-                                "drawing" ||
-                              canDraw ||
-                              !game.startedAt ||
-                              !!game.closedAt ||
-                              !!game.cancelledAt
-                            }
-                            className="text-gray-600 border border-gray-400 bg-gray-50 hover:bg-gray-100 px-3 py-1 rounded-lg text-sm disabled:opacity-50"
-                          >
-                            {loadingStates[game.gameId.toString()] === "drawing"
-                              ? "Processing..."
-                              : game.closedAt
-                              ? "Drawn"
-                              : "Draw"}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+              {renderGameRows()}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-10 bg-gray-50 rounded-lg border border-gray-200">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-12 w-12 text-gray-400 mb-3"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m4-4h8"
-            />
-          </svg>
-          <p className="text-gray-500 text-sm">No games found.</p>
-        </div>
+        <EmptyGamesState />
       )}
     </div>
   );
