@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/zero_sum.json`.
  */
 export type ZeroSum = {
-  "address": "9LTrxFEXZkgYUD6QbZnsJZoxMwQpeKDCNGKSbUiYSc7d",
+  "address": "HYCj1f1r6zS2AwBcsCvQF68fjhUovJBRvo3eNR4AETVY",
   "metadata": {
     "name": "zeroSum",
     "version": "0.1.0",
@@ -13,6 +13,119 @@ export type ZeroSum = {
     "description": "Created with Anchor"
   },
   "instructions": [
+    {
+      "name": "cancelGame",
+      "docs": [
+        "Cancels a game and allows the initiator to withdraw their stake.",
+        "",
+        "Only allowed if no challenger has joined yet.",
+        "",
+        "This function:",
+        "- Ensures the game is still joinable and hasn't closed",
+        "- Returns the entry amount to the initiator",
+        "- Marks the game as cancelled"
+      ],
+      "discriminator": [
+        121,
+        194,
+        154,
+        118,
+        103,
+        235,
+        149,
+        52
+      ],
+      "accounts": [
+        {
+          "name": "initiator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "initiatorTokenAccount",
+          "writable": true
+        },
+        {
+          "name": "usdcMint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "gameId"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameState",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "gameId"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "gameId",
+          "type": "u64"
+        }
+      ]
+    },
     {
       "name": "closeGame",
       "docs": [
@@ -506,119 +619,6 @@ export type ZeroSum = {
           "type": "pubkey"
         }
       ]
-    },
-    {
-      "name": "withdraw",
-      "docs": [
-        "Cancels a game and allows the initiator to withdraw their stake.",
-        "",
-        "Only allowed if no challenger has joined yet.",
-        "",
-        "This function:",
-        "- Ensures the game is still joinable and hasn't closed",
-        "- Returns the entry amount to the initiator",
-        "- Marks the game as cancelled"
-      ],
-      "discriminator": [
-        183,
-        18,
-        70,
-        156,
-        148,
-        109,
-        161,
-        34
-      ],
-      "accounts": [
-        {
-          "name": "initiator",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "initiatorTokenAccount",
-          "writable": true
-        },
-        {
-          "name": "usdcMint"
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  97,
-                  109,
-                  101,
-                  95,
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "initiator"
-              },
-              {
-                "kind": "arg",
-                "path": "gameId"
-              }
-            ]
-          }
-        },
-        {
-          "name": "gameState",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  97,
-                  109,
-                  101,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "initiator"
-              },
-              {
-                "kind": "arg",
-                "path": "gameId"
-              }
-            ]
-          }
-        },
-        {
-          "name": "tokenProgram",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "gameId",
-          "type": "u64"
-        }
-      ]
     }
   ],
   "accounts": [
@@ -803,10 +803,10 @@ export type ZeroSum = {
             "type": "u64"
           },
           {
-            "name": "outcome",
+            "name": "status",
             "type": {
               "defined": {
-                "name": "gameOutcome"
+                "name": "gameStatus"
               }
             }
           },
@@ -814,7 +814,7 @@ export type ZeroSum = {
             "name": "details",
             "type": {
               "defined": {
-                "name": "gameOutcomeDetails"
+                "name": "gameStatusDetails"
               }
             }
           },
@@ -830,6 +830,18 @@ export type ZeroSum = {
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "gameId",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "gameStatus"
+              }
+            }
+          },
           {
             "name": "initiator",
             "type": "pubkey"
@@ -851,10 +863,6 @@ export type ZeroSum = {
             "type": "u64"
           },
           {
-            "name": "gameId",
-            "type": "u64"
-          },
-          {
             "name": "timestamp",
             "type": "i64"
           }
@@ -866,6 +874,18 @@ export type ZeroSum = {
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "gameId",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "gameStatus"
+              }
+            }
+          },
           {
             "name": "challenger",
             "type": "pubkey"
@@ -879,10 +899,6 @@ export type ZeroSum = {
             }
           },
           {
-            "name": "gameId",
-            "type": "u64"
-          },
-          {
             "name": "timestamp",
             "type": "i64"
           }
@@ -890,12 +906,100 @@ export type ZeroSum = {
       }
     },
     {
-      "name": "gameOutcome",
+      "name": "gameState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "gameId",
+            "type": "u64"
+          },
+          {
+            "name": "initiator",
+            "type": "pubkey"
+          },
+          {
+            "name": "initiatorPrediction",
+            "type": {
+              "defined": {
+                "name": "pricePrediction"
+              }
+            }
+          },
+          {
+            "name": "challenger",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "winningPrediction",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "pricePrediction"
+                }
+              }
+            }
+          },
+          {
+            "name": "entryAmount",
+            "type": "u64"
+          },
+          {
+            "name": "initialPrice",
+            "type": "f64"
+          },
+          {
+            "name": "finalPrice",
+            "type": {
+              "option": "f64"
+            }
+          },
+          {
+            "name": "createdAt",
+            "type": "i64"
+          },
+          {
+            "name": "startedAt",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "closedAt",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "gameStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "gameStatus",
       "type": {
         "kind": "enum",
         "variants": [
           {
-            "name": "win",
+            "name": "active"
+          },
+          {
+            "name": "pending"
+          },
+          {
+            "name": "complete",
             "fields": [
               {
                 "defined": {
@@ -908,18 +1012,18 @@ export type ZeroSum = {
             "name": "draw"
           },
           {
-            "name": "cancel"
+            "name": "cancelled"
           }
         ]
       }
     },
     {
-      "name": "gameOutcomeDetails",
+      "name": "gameStatusDetails",
       "type": {
         "kind": "enum",
         "variants": [
           {
-            "name": "win",
+            "name": "complete",
             "fields": [
               {
                 "name": "winner",
@@ -949,70 +1053,6 @@ export type ZeroSum = {
           },
           {
             "name": "none"
-          }
-        ]
-      }
-    },
-    {
-      "name": "gameState",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "initiator",
-            "type": "pubkey"
-          },
-          {
-            "name": "initiatorPrediction",
-            "type": {
-              "defined": {
-                "name": "pricePrediction"
-              }
-            }
-          },
-          {
-            "name": "challenger",
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "entryAmount",
-            "type": "u64"
-          },
-          {
-            "name": "initialPrice",
-            "type": "f64"
-          },
-          {
-            "name": "createdAt",
-            "type": "i64"
-          },
-          {
-            "name": "startedAt",
-            "type": {
-              "option": "i64"
-            }
-          },
-          {
-            "name": "closedAt",
-            "type": {
-              "option": "i64"
-            }
-          },
-          {
-            "name": "cancelledAt",
-            "type": {
-              "option": "i64"
-            }
-          },
-          {
-            "name": "gameId",
-            "type": "u64"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
           }
         ]
       }

@@ -1,12 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { ZeroSum } from "../target/types/zero_sum";
-import {
-  PublicKey,
-  Keypair,
-  LAMPORTS_PER_SOL,
-  Connection,
-} from "@solana/web3.js";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
   createMint,
   createAssociatedTokenAccount,
@@ -35,8 +30,9 @@ describe("zero_sum", () => {
   const program = anchor.workspace.ZeroSum as Program<ZeroSum>;
 
   // Load existing keypairs
-  const initiator = loadKeypairFromFile("tests/id1.json");
-  const mintAuthority = loadKeypairFromFile("tests/id2.json");
+  const initiator = loadKeypairFromFile("../wallets/id1.json");
+  const mintAuthority = loadKeypairFromFile("../wallets/id2.json");
+
   // For our tests, we'll use mintAuthority as the challenger as well
   const challenger = mintAuthority;
 
@@ -192,6 +188,7 @@ describe("zero_sum", () => {
       ).amount;
       const expectedBalance = initialBalance - BigInt(1000000000);
       expect(afterBalance.toString()).toBe(expectedBalance.toString());
+      expect(gameStateAccount.status).toHaveProperty("pending");
 
       console.log(
         "Game created successfully with price:",
@@ -239,7 +236,7 @@ describe("zero_sum", () => {
 
       // Withdraw from game
       const tx = await program.methods
-        .withdraw(gameId)
+        .cancelGame(gameId)
         .accounts({
           initiator: initiator.publicKey,
           initiatorTokenAccount,
@@ -252,8 +249,8 @@ describe("zero_sum", () => {
 
       // Verify game state
       gameStateAccount = await program.account.gameState.fetch(gameState);
-      expect(gameStateAccount.cancelledAt).not.toBeNull();
       expect(gameStateAccount.closedAt).not.toBeNull();
+      expect(gameStateAccount.status).toHaveProperty("cancelled");
 
       // Check that tokens were returned to initiator
       const afterBalance = (

@@ -10,7 +10,7 @@ pub mod state;
 use crate::common::*;
 use crate::instructions::*;
 
-declare_id!("9LTrxFEXZkgYUD6QbZnsJZoxMwQpeKDCNGKSbUiYSc7d");
+declare_id!("HYCj1f1r6zS2AwBcsCvQF68fjhUovJBRvo3eNR4AETVY");
 
 #[program]
 pub mod zero_sum {
@@ -51,6 +51,7 @@ pub mod zero_sum {
         game_state.entry_amount = ENTRY_AMOUNT_USDC;
         game_state.initial_price = initial_price;
         game_state.created_at = current_time;
+        game_state.status = GameStatus::Pending;
         game_state.bump = ctx.bumps.game_state;
 
         // Transfer entry amount into escrow / vault account
@@ -70,11 +71,12 @@ pub mod zero_sum {
         )?;
 
         emit!(GameCreated {
+            game_id: ctx.accounts.game_state.game_id,
+            status: GameStatus::Pending,
             initiator: *ctx.accounts.initiator.key,
             prediction,
             initial_price,
             entry_amount: ENTRY_AMOUNT_USDC,
-            game_id: ctx.accounts.game_state.game_id,
             timestamp: current_time,
         });
 
@@ -114,6 +116,7 @@ pub mod zero_sum {
 
         game_state.challenger = Some(challenger_key);
         game_state.started_at = Some(current_time);
+        game_state.status = GameStatus::Active;
 
         // Transfer entry amount into escrow / vault account
         let cpi_program = ctx.accounts.token_program.to_account_info();
@@ -134,9 +137,10 @@ pub mod zero_sum {
         let challenger_prediction = game_state.get_challenger_prediction();
 
         emit!(GameJoined {
+            game_id,
+            status: GameStatus::Active,
             challenger: challenger_key,
             challenger_prediction,
-            game_id,
             timestamp: current_time,
         });
         Ok(())
@@ -182,6 +186,12 @@ pub mod zero_sum {
             game_state.challenger.unwrap()
         };
 
+        let winning_prediction = if direction == 1 {
+            PricePrediction::Increase
+        } else {
+            PricePrediction::Decrease
+        };
+
         require!(
             ctx.accounts.winner.key() == winner,
             CustomError::NotTheWinner
@@ -189,6 +199,9 @@ pub mod zero_sum {
 
         // Mark game as completed
         game_state.closed_at = Some(current_time);
+        game_state.final_price = Some(final_price);
+        game_state.winning_prediction = Some(winning_prediction);
+        game_state.status = GameStatus::Complete(winning_prediction);
 
         // Transfer the full balance (both players' stakes) to the winner
         let seeds = &[
@@ -215,16 +228,10 @@ pub mod zero_sum {
 
         token::transfer_checked(cpi_ctx, total_payout, ctx.accounts.usdc_mint.decimals)?;
 
-        let winning_prediction = if direction == 1 {
-            PricePrediction::Increase
-        } else {
-            PricePrediction::Decrease
-        };
-
         emit!(GameClosed {
             game_id,
-            outcome: GameOutcome::Win(winning_prediction),
-            details: GameOutcomeDetails::Win {
+            status: GameStatus::Complete(winning_prediction),
+            details: GameStatusDetails::Complete {
                 winner,
                 winning_prediction,
                 price_movement_percentage,
@@ -265,6 +272,7 @@ pub mod zero_sum {
 
         // Mark game as closed
         game_state.closed_at = Some(current_time);
+        game_state.status = GameStatus::Draw;
 
         // Return the entry amounts to players
         let seeds = &[
@@ -311,8 +319,8 @@ pub mod zero_sum {
 
         emit!(GameClosed {
             game_id,
-            outcome: GameOutcome::Draw,
-            details: GameOutcomeDetails::None,
+            status: GameStatus::Draw,
+            details: GameStatusDetails::None,
             timestamp: current_time,
         });
 
@@ -327,7 +335,7 @@ pub mod zero_sum {
     /// - Ensures the game is still joinable and hasn't closed
     /// - Returns the entry amount to the initiator
     /// - Marks the game as cancelled
-    pub fn withdraw(ctx: Context<Withdraw>, game_id: u64) -> Result<()> {
+    pub fn cancel_game(ctx: Context<CancelGame>, game_id: u64) -> Result<()> {
         let game_state = &mut ctx.accounts.game_state;
         let initiator = &ctx.accounts.initiator;
         let initiator_key = initiator.key();
@@ -335,8 +343,8 @@ pub mod zero_sum {
 
         game_state.validate_withdraw(game_id, initiator_key)?;
 
-        game_state.cancelled_at = Some(current_time);
         game_state.closed_at = Some(current_time);
+        game_state.status = GameStatus::Cancelled;
 
         // Return the entry amount to initiator
         let seeds = &[
@@ -364,8 +372,8 @@ pub mod zero_sum {
 
         emit!(GameClosed {
             game_id,
-            outcome: GameOutcome::Cancel,
-            details: GameOutcomeDetails::None,
+            status: GameStatus::Cancelled,
+            details: GameStatusDetails::None,
             timestamp: current_time,
         });
 

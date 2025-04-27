@@ -16,21 +16,21 @@ export function PriceMonitor({
 }: PriceMonitorProps): JSX.Element {
   // Function to check if price has hit thresholds
   const checkThresholds = (priceChangePercent: number): string => {
-    if (priceChangePercent >= CONSTANTS.PRICE_CHANGE_THRESHOLD) {
-      return `Increase threshold reached! (${CONSTANTS.PRICE_CHANGE_THRESHOLD}% or more)`;
-    } else if (priceChangePercent <= -CONSTANTS.PRICE_CHANGE_THRESHOLD) {
-      return `Decrease threshold reached! (${CONSTANTS.PRICE_CHANGE_THRESHOLD}% or more)`;
-    } else if (priceChangePercent >= CONSTANTS.JOIN_PRICE_THRESHOLD) {
+    if (priceChangePercent >= CONSTANTS.WIN_PRICE_THRESHOLD) {
+      return `Increase threshold reached! (${CONSTANTS.WIN_PRICE_THRESHOLD}% or more)`;
+    } else if (priceChangePercent <= -CONSTANTS.WIN_PRICE_THRESHOLD) {
+      return `Decrease threshold reached! (${CONSTANTS.WIN_PRICE_THRESHOLD}% or more)`;
+    } else if (priceChangePercent >= CONSTANTS.MAX_JOIN_PRICE_MOVEMENT) {
       return `Price up ${priceChangePercent.toFixed(
         2
       )}%, above joining threshold`;
-    } else if (priceChangePercent <= -CONSTANTS.JOIN_PRICE_THRESHOLD) {
+    } else if (priceChangePercent <= -CONSTANTS.MAX_JOIN_PRICE_MOVEMENT) {
       return `Price down ${priceChangePercent.toFixed(
         2
       )}%, above joining threshold`;
     } else {
       return `Price change: ${priceChangePercent.toFixed(2)}% (within ±${
-        CONSTANTS.JOIN_PRICE_THRESHOLD
+        CONSTANTS.MAX_JOIN_PRICE_MOVEMENT
       }% joining threshold)`;
     }
   };

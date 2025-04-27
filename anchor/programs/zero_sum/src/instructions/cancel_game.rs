@@ -5,7 +5,7 @@ use crate::{common::CustomError, state::GameState};
 
 #[derive(Accounts)]
 #[instruction(game_id: u64)]
-pub struct Withdraw<'info> {
+pub struct CancelGame<'info> {
     #[account(mut)]
     pub initiator: Signer<'info>,
 

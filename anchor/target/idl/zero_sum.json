@@ -1,5 +1,5 @@
 {
-  "address": "9LTrxFEXZkgYUD6QbZnsJZoxMwQpeKDCNGKSbUiYSc7d",
+  "address": "HYCj1f1r6zS2AwBcsCvQF68fjhUovJBRvo3eNR4AETVY",
   "metadata": {
     "name": "zero_sum",
     "version": "0.1.0",
@@ -7,6 +7,119 @@
     "description": "Created with Anchor"
   },
   "instructions": [
+    {
+      "name": "cancel_game",
+      "docs": [
+        "Cancels a game and allows the initiator to withdraw their stake.",
+        "",
+        "Only allowed if no challenger has joined yet.",
+        "",
+        "This function:",
+        "- Ensures the game is still joinable and hasn't closed",
+        "- Returns the entry amount to the initiator",
+        "- Marks the game as cancelled"
+      ],
+      "discriminator": [
+        121,
+        194,
+        154,
+        118,
+        103,
+        235,
+        149,
+        52
+      ],
+      "accounts": [
+        {
+          "name": "initiator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "initiator_token_account",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "initiator"
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "game_id",
+          "type": "u64"
+        }
+      ]
+    },
     {
       "name": "close_game",
       "docs": [
@@ -500,119 +613,6 @@
           "type": "pubkey"
         }
       ]
-    },
-    {
-      "name": "withdraw",
-      "docs": [
-        "Cancels a game and allows the initiator to withdraw their stake.",
-        "",
-        "Only allowed if no challenger has joined yet.",
-        "",
-        "This function:",
-        "- Ensures the game is still joinable and hasn't closed",
-        "- Returns the entry amount to the initiator",
-        "- Marks the game as cancelled"
-      ],
-      "discriminator": [
-        183,
-        18,
-        70,
-        156,
-        148,
-        109,
-        161,
-        34
-      ],
-      "accounts": [
-        {
-          "name": "initiator",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "initiator_token_account",
-          "writable": true
-        },
-        {
-          "name": "usdc_mint"
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  97,
-                  109,
-                  101,
-                  95,
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "initiator"
-              },
-              {
-                "kind": "arg",
-                "path": "game_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "game_state",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  97,
-                  109,
-                  101,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "initiator"
-              },
-              {
-                "kind": "arg",
-                "path": "game_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "game_id",
-          "type": "u64"
-        }
-      ]
     }
   ],
   "accounts": [
@@ -797,10 +797,10 @@
             "type": "u64"
           },
           {
-            "name": "outcome",
+            "name": "status",
             "type": {
               "defined": {
-                "name": "GameOutcome"
+                "name": "GameStatus"
               }
             }
           },
@@ -808,7 +808,7 @@
             "name": "details",
             "type": {
               "defined": {
-                "name": "GameOutcomeDetails"
+                "name": "GameStatusDetails"
               }
             }
           },
@@ -824,6 +824,18 @@
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "GameStatus"
+              }
+            }
+          },
           {
             "name": "initiator",
             "type": "pubkey"
@@ -845,10 +857,6 @@
             "type": "u64"
           },
           {
-            "name": "game_id",
-            "type": "u64"
-          },
-          {
             "name": "timestamp",
             "type": "i64"
           }
@@ -860,6 +868,18 @@
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "GameStatus"
+              }
+            }
+          },
           {
             "name": "challenger",
             "type": "pubkey"
@@ -873,10 +893,6 @@
             }
           },
           {
-            "name": "game_id",
-            "type": "u64"
-          },
-          {
             "name": "timestamp",
             "type": "i64"
           }
@@ -884,12 +900,100 @@
       }
     },
     {
-      "name": "GameOutcome",
+      "name": "GameState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "initiator",
+            "type": "pubkey"
+          },
+          {
+            "name": "initiator_prediction",
+            "type": {
+              "defined": {
+                "name": "PricePrediction"
+              }
+            }
+          },
+          {
+            "name": "challenger",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "winning_prediction",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "PricePrediction"
+                }
+              }
+            }
+          },
+          {
+            "name": "entry_amount",
+            "type": "u64"
+          },
+          {
+            "name": "initial_price",
+            "type": "f64"
+          },
+          {
+            "name": "final_price",
+            "type": {
+              "option": "f64"
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "started_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "closed_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "GameStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameStatus",
       "type": {
         "kind": "enum",
         "variants": [
           {
-            "name": "Win",
+            "name": "Active"
+          },
+          {
+            "name": "Pending"
+          },
+          {
+            "name": "Complete",
             "fields": [
               {
                 "defined": {
@@ -902,18 +1006,18 @@
             "name": "Draw"
           },
           {
-            "name": "Cancel"
+            "name": "Cancelled"
           }
         ]
       }
     },
     {
-      "name": "GameOutcomeDetails",
+      "name": "GameStatusDetails",
       "type": {
         "kind": "enum",
         "variants": [
           {
-            "name": "Win",
+            "name": "Complete",
             "fields": [
               {
                 "name": "winner",
@@ -943,70 +1047,6 @@
           },
           {
             "name": "None"
-          }
-        ]
-      }
-    },
-    {
-      "name": "GameState",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "initiator",
-            "type": "pubkey"
-          },
-          {
-            "name": "initiator_prediction",
-            "type": {
-              "defined": {
-                "name": "PricePrediction"
-              }
-            }
-          },
-          {
-            "name": "challenger",
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "entry_amount",
-            "type": "u64"
-          },
-          {
-            "name": "initial_price",
-            "type": "f64"
-          },
-          {
-            "name": "created_at",
-            "type": "i64"
-          },
-          {
-            "name": "started_at",
-            "type": {
-              "option": "i64"
-            }
-          },
-          {
-            "name": "closed_at",
-            "type": {
-              "option": "i64"
-            }
-          },
-          {
-            "name": "cancelled_at",
-            "type": {
-              "option": "i64"
-            }
-          },
-          {
-            "name": "game_id",
-            "type": "u64"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
           }
         ]
       }

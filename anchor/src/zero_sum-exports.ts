@@ -32,7 +32,7 @@ export function getZeroSumProgramId(cluster: Cluster) {
     case "devnet":
     case "testnet":
       // This is the program ID for the ZeroSum program on devnet and testnet.
-      return new PublicKey("9LTrxFEXZkgYUD6QbZnsJZoxMwQpeKDCNGKSbUiYSc7d");
+      return new PublicKey(ZeroSumIDL.address);
     case "mainnet-beta":
     default:
       return ZERO_SUM_PROGRAM_ID;

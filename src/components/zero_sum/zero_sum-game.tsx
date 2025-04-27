@@ -12,6 +12,8 @@ import { UserGames } from "@/components/zero_sum/features/UserGames";
 import { PriceData } from "@/components/zero_sum/types";
 import { useChainlinkPriceFeed } from "@/components/zero_sum/hooks/useChainlinkPriceFeed";
 import { useZeroSumProgram } from "./zero_sum-data-access";
+import { CommunityGames } from "./features/CommunityGames";
+import { isPendingStatus } from "./utils/utils";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 
@@ -46,14 +48,8 @@ export default function ZeroSumGame(): JSX.Element {
 
   // Filter for games where the user is either the initiator or challenger
   const openGames = useMemo(
-    () =>
-      allGames.filter(
-        (game) =>
-          !game.challenger &&
-          game.initiator.toString() !== publicKey?.toString() &&
-          !game.closedAt // Remove games that are closed
-      ),
-    [allGames, publicKey]
+    () => allGames.filter((game) => isPendingStatus(game.status)),
+    [allGames]
   );
 
   // Set initial price when first received
@@ -86,13 +82,6 @@ export default function ZeroSumGame(): JSX.Element {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <ToastContainer position="top-right" autoClose={5000} />
-
-      <header className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800">Zero Sum Game</h1>
-          <p className="text-gray-600 mt-1">ETH/USDC Price Prediction</p>
-        </div>
-      </header>
 
       {connected && (
         <GameStatistics
@@ -136,6 +125,19 @@ export default function ZeroSumGame(): JSX.Element {
         </div>
       )}
 
+      {/* Community Games Section */}
+      {connected && (
+        <div className="mt-8">
+          <CommunityGames
+            publicKey={publicKey}
+            priceData={priceData}
+            allGames={allGames}
+            userGames={userGames}
+            openGames={openGames}
+          />
+        </div>
+      )}
+
       {!connected && (
         <div className="mt-12 p-8 bg-white rounded-2xl shadow-lg text-center border border-gray-200">
           <svg
@@ -168,7 +170,17 @@ export default function ZeroSumGame(): JSX.Element {
 
       <footer className="mt-12 text-center text-gray-500 text-sm">
         <p>© 2025 Zero Sum Game. All rights reserved.</p>
-        <p className="mt-1">Built on Solana with Chainlink price feeds</p>
+        <p className="mt-1">
+          Created by{" "}
+          <a
+            className="link"
+            href="https://github.com/iamramtin/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Ramtin Mesgari
+          </a>
+        </p>
       </footer>
     </div>
   );

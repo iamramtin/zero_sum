@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use super::{GameOutcome, PricePrediction};
+use super::{GameStatus, PricePrediction};
 
 #[event]
 pub struct PriceFetched {
@@ -11,33 +11,35 @@ pub struct PriceFetched {
 
 #[event]
 pub struct GameCreated {
+    pub game_id: u64,
+    pub status: GameStatus,
     pub initiator: Pubkey,
     pub prediction: PricePrediction,
     pub initial_price: f64,
     pub entry_amount: u64,
-    pub game_id: u64,
     pub timestamp: i64,
 }
 
 #[event]
 pub struct GameJoined {
+    pub game_id: u64,
+    pub status: GameStatus,
     pub challenger: Pubkey,
     pub challenger_prediction: PricePrediction,
-    pub game_id: u64,
     pub timestamp: i64,
 }
 
 #[event]
 pub struct GameClosed {
     pub game_id: u64,
-    pub outcome: GameOutcome,
-    pub details: GameOutcomeDetails,
+    pub status: GameStatus,
+    pub details: GameStatusDetails,
     pub timestamp: i64,
 }
 
 #[derive(Debug, AnchorSerialize, AnchorDeserialize)]
-pub enum GameOutcomeDetails {
-    Win {
+pub enum GameStatusDetails {
+    Complete {
         winner: Pubkey,
         winning_prediction: PricePrediction,
         price_movement_percentage: f64,
