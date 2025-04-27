@@ -10,7 +10,7 @@ pub mod state;
 use crate::common::*;
 use crate::instructions::*;
 
-declare_id!("HYCj1f1r6zS2AwBcsCvQF68fjhUovJBRvo3eNR4AETVY");
+declare_id!("HyTwoM3vT59WKAcBKAQSu2zHh7vAoduS5tTL8Z1uLDdc");
 
 #[program]
 pub mod zero_sum {
@@ -48,7 +48,7 @@ pub mod zero_sum {
         game_state.game_id = game_id;
         game_state.initiator = ctx.accounts.initiator.key();
         game_state.initiator_prediction = prediction;
-        game_state.entry_amount = ENTRY_AMOUNT_USDC;
+        game_state.entry_amount = usdc_to_on_chain_amount(ENTRY_AMOUNT_USDC);
         game_state.initial_price = initial_price;
         game_state.created_at = current_time;
         game_state.status = GameStatus::Pending;

@@ -1,5 +1,5 @@
 {
-  "address": "HYCj1f1r6zS2AwBcsCvQF68fjhUovJBRvo3eNR4AETVY",
+  "address": "HyTwoM3vT59WKAcBKAQSu2zHh7vAoduS5tTL8Z1uLDdc",
   "metadata": {
     "name": "zero_sum",
     "version": "0.1.0",
@@ -671,6 +671,19 @@
       ]
     },
     {
+      "name": "PriceChanged",
+      "discriminator": [
+        251,
+        22,
+        83,
+        247,
+        153,
+        87,
+        138,
+        30
+      ]
+    },
+    {
       "name": "PriceFetched",
       "discriminator": [
         207,
@@ -1047,6 +1060,34 @@
           },
           {
             "name": "None"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PriceChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "initial_price",
+            "type": "f64"
+          },
+          {
+            "name": "final_price",
+            "type": "f64"
+          },
+          {
+            "name": "percentage_change",
+            "type": "f64"
+          },
+          {
+            "name": "threshold_exceeded",
+            "type": "bool"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
           }
         ]
       }

@@ -3,6 +3,7 @@
 import "react-toastify/dist/ReactToastify.css";
 import { CONSTANTS } from "../constants";
 import { GameStatisticsProps } from "../types";
+import { isActiveStatus, isPendingStatus } from "../utils/utils";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 
@@ -22,10 +23,9 @@ export function GameStatistics({
     (userGames.length + openGames.length) * CONSTANTS.ENTRY_AMOUNT;
 
   // Count user's active games (with a challenger)
-  const activeGames = userGames.filter((game) => game.challenger).length;
-
-  // Count user's pending games (without a challenger)
-  const pendingGames = userGames.filter((game) => !game.challenger).length;
+  const activeGames = userGames.filter((game) =>
+    isActiveStatus(game.status)
+  ).length;
 
   return (
     <div className="bg-white rounded-2xl shadow-lg p-6 md:col-span-3 transition-all hover:shadow-xl border border-gray-100 mb-6">
@@ -132,7 +132,7 @@ export function GameStatistics({
             <div>
               <p className="text-sm text-gray-500">Your Active Games</p>
               <p className="text-lg font-bold">
-                {activeGames} / {pendingGames + activeGames}
+                {activeGames} / {userGames.length}
               </p>
             </div>
           </div>

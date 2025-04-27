@@ -22,18 +22,12 @@ export const CONSTANTS = {
   FEED_DECIMALS: 8, // To format into readable price
 
   // Game settings
-  GAME_TIMEOUT_SECONDS: parseInt(process.env.GAME_TIMEOUT_SECONDS || "86400"), // 24 hours in seconds
+  GAME_TIMEOUT_SECONDS: parseInt(process.env.GAME_TIMEOUT_SECONDS || "1800"), // 30 mins
   ENTRY_AMOUNT: parseInt(process.env.ENTRY_AMOUNT || "1000"), // 1000 USDC
   MAX_JOIN_PRICE_MOVEMENT: parseFloat(
     process.env.MAX_JOIN_PRICE_MOVEMENT || "1"
   ), // 1% max change for joining
   WIN_PRICE_THRESHOLD: parseFloat(process.env.WIN_PRICE_THRESHOLD || "5"), // 5% movement for win
-
-  // TODO: for testing - remove
-  // GAME_TIMEOUT_SECONDS: 2 * 60, // 2 mins in seconds - for testing
-  // ENTRY_AMOUNT: 1000, // 1000 USDC
-  // MAX_JOIN_PRICE_MOVEMENT: 10, // 10% threshold to join
-  // WIN_PRICE_THRESHOLD: 0.1, // 1% threshold to win - for testing
 
   // USDC token address
   USDC_MINT: new PublicKey(

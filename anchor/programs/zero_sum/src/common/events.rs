@@ -10,6 +10,15 @@ pub struct PriceFetched {
 }
 
 #[event]
+pub struct PriceChanged {
+    pub initial_price: f64,
+    pub final_price: f64,
+    pub percentage_change: f64,
+    pub threshold_exceeded: bool,
+    pub timestamp: i64,
+}
+
+#[event]
 pub struct GameCreated {
     pub game_id: u64,
     pub status: GameStatus,
@@ -22,11 +31,11 @@ pub struct GameCreated {
 
 #[event]
 pub struct GameJoined {
-    pub game_id: u64,
-    pub status: GameStatus,
-    pub challenger: Pubkey,
-    pub challenger_prediction: PricePrediction,
-    pub timestamp: i64,
+pub game_id: u64,
+pub status: GameStatus,
+pub challenger: Pubkey,
+pub challenger_prediction: PricePrediction,
+pub timestamp: i64,
 }
 
 #[event]

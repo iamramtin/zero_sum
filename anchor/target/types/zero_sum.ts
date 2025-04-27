@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/zero_sum.json`.
  */
 export type ZeroSum = {
-  "address": "HYCj1f1r6zS2AwBcsCvQF68fjhUovJBRvo3eNR4AETVY",
+  "address": "HyTwoM3vT59WKAcBKAQSu2zHh7vAoduS5tTL8Z1uLDdc",
   "metadata": {
     "name": "zeroSum",
     "version": "0.1.0",
@@ -677,6 +677,19 @@ export type ZeroSum = {
       ]
     },
     {
+      "name": "priceChanged",
+      "discriminator": [
+        251,
+        22,
+        83,
+        247,
+        153,
+        87,
+        138,
+        30
+      ]
+    },
+    {
       "name": "priceFetched",
       "discriminator": [
         207,
@@ -1053,6 +1066,34 @@ export type ZeroSum = {
           },
           {
             "name": "none"
+          }
+        ]
+      }
+    },
+    {
+      "name": "priceChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "initialPrice",
+            "type": "f64"
+          },
+          {
+            "name": "finalPrice",
+            "type": "f64"
+          },
+          {
+            "name": "percentageChange",
+            "type": "f64"
+          },
+          {
+            "name": "thresholdExceeded",
+            "type": "bool"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
           }
         ]
       }

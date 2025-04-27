@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use chainlink_solana as chainlink;
 
-use crate::common::PriceFetched;
+use crate::common::{PriceChanged, PriceFetched, USDC_DECIMALS};
 
 use super::CustomError;
 
@@ -45,15 +45,15 @@ pub fn get_chainlink_price<'info>(
 // Checks if price has moved by given percentage
 pub fn has_price_moved_by_percentage(
     initial_price: f64,
-    current_price: f64,
+    final_price: f64,
     percentage: f64,
 ) -> Result<(bool, i8, f64)> {
-    if initial_price <= 0.0 || current_price <= 0.0 {
+    if initial_price <= 0.0 || final_price <= 0.0 {
         return Err(CustomError::InvalidPriceValue.into());
     }
 
     // Calculate the percentage change
-    let percentage_change = ((current_price - initial_price) / initial_price) * 100.0;
+    let percentage_change = (final_price - initial_price) / initial_price;
 
     // Determine if threshold is exceeded and the direction
     let threshold_exceeded = percentage_change.abs() >= percentage.abs();
@@ -67,10 +67,21 @@ pub fn has_price_moved_by_percentage(
         0
     };
 
-    msg!("Initial price: {}", initial_price);
-    msg!("Final price: {}", current_price);
-    msg!("Percentage change: {}", percentage_change);
-    msg!("Threshold exceeded: {}", threshold_exceeded);
+    emit!(PriceChanged {
+        initial_price,
+        final_price,
+        percentage_change,
+        threshold_exceeded,
+        timestamp: Clock::get()?.unix_timestamp,
+    });
 
     Ok((threshold_exceeded, direction, percentage_change))
+}
+
+// Converts a human-readable USDC amount to on-chain representation
+// Example: 1000 -> 1_000_000_000
+pub fn usdc_to_on_chain_amount(amount: u64) -> u64 {
+    let usdc_multiplier: u64 = 10u64.pow(USDC_DECIMALS);
+
+    amount * usdc_multiplier
 }
