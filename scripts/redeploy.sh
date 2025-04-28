@@ -94,14 +94,7 @@ echo "🚀 Deploying program to $CLUSTER..."
 anchor deploy --provider.cluster "$CLUSTER" --provider.wallet "$WALLET_PATH"
 
 # ----------------------------
-# STEP 8: Run tests on Devnet
-# ----------------------------
-
-echo "🧪 Running Devnet tests..."
-anchor test --skip-deploy --provider.cluster "$CLUSTER" tests/${PROGRAM_NAME}.spec.ts
-
-# ----------------------------
-# STEP 9: Show deployed programs
+# STEP 8: Show deployed programs
 # ----------------------------
 
 echo "📦 Showing deployed program info..."

@@ -252,7 +252,6 @@ function findGameStatePDA(
 
 /**
  * Creates a new ETH price prediction game on-chain
- * @param connection Solana connection
  * @param program Anchor program instance
  * @param initiatorKeypair Initiator's keypair
  * @param initiatorTokenAccount Initiator's token account
@@ -261,7 +260,6 @@ function findGameStatePDA(
  * @param prediction Price prediction (increase/decrease)
  */
 async function createGame(
-  connection: Connection,
   program: Program<any>,
   initiatorKeypair: Keypair,
   initiatorTokenAccount: PublicKey,
@@ -715,7 +713,6 @@ async function runSeedScript(): Promise<void> {
       const game = games[i];
       try {
         const { signature } = await createGame(
-          connection,
           program,
           initiator,
           initiatorTokenAccount,
