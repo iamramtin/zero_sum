@@ -1,5 +1,5 @@
 import * as anchor from "@coral-xyz/anchor";
-import { EventParser, Program } from "@coral-xyz/anchor";
+import { Program } from "@coral-xyz/anchor";
 import { ZeroSum } from "../target/types/zero_sum";
 import {
   PublicKey,
@@ -8,16 +8,22 @@ import {
   Connection,
 } from "@solana/web3.js";
 import {
-  createMint,
-  createAssociatedTokenAccount,
-  mintTo,
   getAccount,
   getOrCreateAssociatedTokenAccount,
 } from "@solana/spl-token";
 import * as fs from "fs";
 import path from "path";
-import { formatGameStatus } from "src/components/zero_sum/utils/gameUtils";
-import { isIncreasePrediction } from "src/components/zero_sum/utils/predictionUtils";
+import {
+  sleep,
+  fetchCurrentPrice,
+  findGameStatePDA,
+  findVaultPDA,
+  cancelGame,
+  joinGame,
+  createGame,
+  calculatePriceChange,
+  closeGame,
+} from "./test_utils";
 
 /**
  * Configuration constants for the script
@@ -54,10 +60,12 @@ const CONSTANTS = {
   WIN_PRICE_THRESHOLD: 5, // 5% movement for win
 };
 
+// Price prediction type and constants
 type PricePrediction = { increase: {} } | { decrease: {} };
 const PredictionIncrease: PricePrediction = { increase: {} };
 const PredictionDecrease: PricePrediction = { decrease: {} };
 
+// Logger for terminal output
 const Logger = {
   info: (message: string) => console.log(`\x1b[36m${message}\x1b[0m`),
   success: (message: string) => console.log(`\x1b[32m${message}\x1b[0m`),
@@ -67,10 +75,6 @@ const Logger = {
     console.log(`\x1b[41m\x1b[37m ${message} \x1b[0m`),
   plain: (message: string) => console.log(message),
 };
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function loadKeypairFromFile(filePath: string): Keypair {
   try {
@@ -145,36 +149,6 @@ async function getOrCreateTokenAccount(
     Logger.error(`Failed to get/create token account: ${error}`);
     throw error;
   }
-}
-
-function findGameStatePDA(
-  programId: PublicKey,
-  publicKey: PublicKey,
-  gameId: anchor.BN
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("game_state"),
-      publicKey.toBuffer(),
-      gameId.toArrayLike(Buffer, "le", 8),
-    ],
-    programId
-  );
-}
-
-function findVaultPDA(
-  programId: PublicKey,
-  publicKey: PublicKey,
-  gameId: anchor.BN
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("game_vault"),
-      publicKey.toBuffer(),
-      gameId.toArrayLike(Buffer, "le", 8),
-    ],
-    programId
-  );
 }
 
 async function checkRequirements(
@@ -262,7 +236,6 @@ describe("zero_sum", () => {
   // Load existing keypairs
   let initiator: Keypair;
   let challenger: Keypair;
-  // const mintAuthority = loadKeypairFromFile("../wallets/id2.json");
 
   // Variables for token setup
   let usdcMint: PublicKey;
@@ -311,6 +284,51 @@ describe("zero_sum", () => {
 
     console.log("Test setup complete!");
   }, 60000);
+
+  it("Fetches price from Chainlink successfully", async () => {
+    try {
+      // Fetch the current price from Chainlink
+      const price = await fetchCurrentPrice(
+        program,
+        provider,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
+
+      console.log(`Current ETH/USD price: ${price}`);
+
+      // Verify the price is valid
+      expect(price).not.toBeNull();
+      expect(typeof price).toBe("number");
+      expect(price).toBeGreaterThan(0);
+
+      // Fetch again to verify consistency
+      const secondPrice = await fetchCurrentPrice(
+        program,
+        provider,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
+
+      console.log(`Second ETH/USD price fetch: ${secondPrice}`);
+
+      // The two prices should be relatively close (unless market is extremely volatile)
+      expect(secondPrice).not.toBeNull();
+
+      // Calculate percentage difference between the two prices
+      if (price && secondPrice) {
+        const priceDiff = Math.abs(((secondPrice - price) / price) * 100);
+        console.log(`Price difference: ${priceDiff.toFixed(4)}%`);
+
+        // In a stable market, the price shouldn't change dramatically in a few seconds
+        // This is a sanity check, not a strict test requirement
+        expect(priceDiff).toBeLessThan(5); // Less than 5% change
+      }
+    } catch (error: any) {
+      console.error("Error fetching price:", error);
+      throw error;
+    }
+  }, 30000);
 
   it("Creates a game successfully", async () => {
     try {
@@ -382,8 +400,9 @@ describe("zero_sum", () => {
     }
   }, 30000);
 
-  it("Allows initiator to withdraw from a game", async () => {
+  it("Allows initiator to withdraw from a game that exists", async () => {
     try {
+      // Create a new game first
       const gameId = new anchor.BN(Date.now());
       const prediction: PricePrediction = { decrease: {} };
 
@@ -399,6 +418,7 @@ describe("zero_sum", () => {
         .signers([initiator])
         .rpc();
 
+      // Verify game was created
       const [gameState] = findGameStatePDA(
         program.programId,
         initiator.publicKey,
@@ -407,26 +427,27 @@ describe("zero_sum", () => {
 
       let gameStateAccount = await program.account.gameState.fetch(gameState);
       expect(gameStateAccount.initiatorPrediction).toEqual(prediction);
+      expect(gameStateAccount.status).toHaveProperty("pending");
 
-      // Get initial token balance
+      // Get initial token balance before withdrawal
       const initialBalance = (
         await getAccount(provider.connection, initiatorTokenAccount)
       ).amount;
 
       // Withdraw from game
-      const tx = await program.methods
-        .cancelGame(gameId)
-        .accounts({
-          initiator: initiator.publicKey,
-          initiatorTokenAccount,
-          usdcMint,
-        })
-        .signers([initiator])
-        .rpc();
+      const result = await cancelGame(
+        program,
+        provider,
+        gameId,
+        initiator,
+        initiatorTokenAccount,
+        usdcMint
+      );
 
-      console.log("Withdrawal transaction signature:", tx);
+      expect(result.success).toBe(true);
+      console.log("Withdrawal transaction signature:", result.signature);
 
-      // Verify game state
+      // Verify game state after withdrawal
       gameStateAccount = await program.account.gameState.fetch(gameState);
       expect(gameStateAccount.closedAt).not.toBeNull();
       expect(gameStateAccount.status).toHaveProperty("cancelled");
@@ -445,8 +466,47 @@ describe("zero_sum", () => {
     }
   }, 30000);
 
+  it("Initiator fails to withdraw from a game that does not exist", async () => {
+    try {
+      // Try to withdraw from a non-existent game
+      const nonExistentGameId = new anchor.BN(123456789); // Random ID that doesn't exist
+
+      // Get initial token balance
+      const initialBalance = (
+        await getAccount(provider.connection, initiatorTokenAccount)
+      ).amount;
+
+      // Attempt to withdraw
+      const result = await cancelGame(
+        program,
+        provider,
+        nonExistentGameId,
+        initiator,
+        initiatorTokenAccount,
+        usdcMint
+      );
+
+      // The withdrawal should fail
+      expect(result.success).toBe(false);
+      console.log(
+        "Withdrawal correctly failed with error:",
+        result.error.message
+      );
+
+      // Verify token balance hasn't changed
+      const afterBalance = (
+        await getAccount(provider.connection, initiatorTokenAccount)
+      ).amount;
+      expect(afterBalance.toString()).toBe(initialBalance.toString());
+    } catch (error: any) {
+      console.error("Unexpected error:", error);
+      throw error;
+    }
+  }, 30000);
+
   it("Prevents initiator from joining their own game", async () => {
     try {
+      // Create a new game
       const gameId = new anchor.BN(Date.now());
       const prediction: PricePrediction = { increase: {} };
 
@@ -462,368 +522,500 @@ describe("zero_sum", () => {
         .signers([initiator])
         .rpc();
 
-      // Attempt to join own game
-      await program.methods
-        .joinGame(gameId, initiator.publicKey)
-        .accounts({
-          challenger: initiator.publicKey,
-          challengerTokenAccount: initiatorTokenAccount,
-          usdcMint,
-          chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
-          chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
-        })
-        .signers([initiator])
-        .rpc();
+      // Get initial token balance
+      const initialBalance = (
+        await getAccount(provider.connection, initiatorTokenAccount)
+      ).amount;
 
-      // We shouldn't reach this point
-      throw new Error("Should not have been able to join own game");
-    } catch (error: any) {
-      console.log(
-        "Error as expected when trying to join own game:",
-        error.message
+      // Attempt to join own game
+      const result = await joinGame(
+        program,
+        provider,
+        gameId,
+        initiator.publicKey,
+        initiator,
+        initiatorTokenAccount,
+        usdcMint,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
       );
-      expect(error.message).toContain("CannotJoinOwnGame");
+
+      // The join should fail
+      expect(result.success).toBe(false);
+      console.log("Join correctly failed with error:", result.error.message);
+
+      // Verify the error contains the expected error code
+      expect(result.error.message).toContain("CannotJoinOwnGame");
+
+      // Verify token balance hasn't changed
+      const afterBalance = (
+        await getAccount(provider.connection, initiatorTokenAccount)
+      ).amount;
+      expect(afterBalance.toString()).toBe(initialBalance.toString());
+    } catch (error: any) {
+      console.error("Unexpected error:", error);
+      throw error;
     }
   }, 30000);
 
-  // [TODO] - dependent on chainlink
-  // it("Allows a challenger to join a game if price movement is within limits", async () => {
-  //   try {
-  //     const gameId = new anchor.BN(Date.now());
-  //     let initialPrice: number = NaN;
+  it("Allows a challenger to join a game if price movement is within limits", async () => {
+    try {
+      // Create a new game
+      const { gameId, initialPrice } = await createGame(
+        program,
+        provider,
+        initiator,
+        initiatorTokenAccount,
+        usdcMint,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
+        PredictionIncrease
+      );
 
-  //     // Create the game
-  //     const createTx = await program.methods
-  //       .createGame(gameId, PredictionIncrease)
-  //       .accounts({
-  //         initiator: initiator.publicKey,
-  //         initiatorTokenAccount,
-  //         usdcMint,
-  //         chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
-  //         chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
-  //       })
-  //       .signers([initiator])
-  //       .transaction();
+      console.log(`Game created with ID: ${gameId.toString()}`);
+      console.log(`Initial ETH/USD price: ${initialPrice}`);
 
-  //     const txCreateSignature = await provider.sendAndConfirm(createTx, [
-  //       initiator,
-  //     ]);
+      if (!initialPrice) {
+        throw new Error("Failed to get initial price from game creation");
+      }
 
-  //     // Parse logs to get initial price
-  //     const txCreateDetails = await provider.connection.getParsedTransaction(
-  //       txCreateSignature,
-  //       {
-  //         commitment: "confirmed",
-  //         maxSupportedTransactionVersion: 0,
-  //       }
-  //     );
+      // Get the game state
+      const [gameStateAddress] = findGameStatePDA(
+        program.programId,
+        initiator.publicKey,
+        gameId
+      );
 
-  //     if (!txCreateDetails?.meta?.logMessages) {
-  //       throw new Error("Failed to get transaction logs");
-  //     }
+      // Wait a bit to allow for possible price movement
+      console.log("Waiting for possible price movement...");
+      await sleep(3000);
 
-  //     // Parse events to extract initial price
-  //     const eventParser = new EventParser(program.programId, program.coder);
-  //     const events = eventParser.parseLogs(txCreateDetails.meta.logMessages);
+      // Fetch current price
+      const currentPrice = await fetchCurrentPrice(
+        program,
+        provider,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
 
-  //     if ((events as any).length === 0) {
-  //       throw new Error("No events found in transaction logs");
-  //     }
+      if (!currentPrice) {
+        throw new Error("Failed to get current price");
+      }
 
-  //     for (const event of events as any) {
-  //       console.log("event.name", event.name);
+      console.log(`Current ETH/USD price: ${currentPrice}`);
 
-  //       switch (event.name) {
-  //         case "priceFetched":
-  //           console.log("Price Fetched Event", event.data);
-  //           console.log(`Price Fetched Logs:`);
-  //           console.log(
-  //             `Price is ${event.data.price} for ${event.data.description}`
-  //           );
-  //           break;
-  //         case "gameCreated":
-  //           console.log("Game Created Event", event.data);
-  //           console.log(`Game Created Logs: Game ID ${event.data.gameId}`);
-  //           console.log(`Status: ${formatGameStatus(event.data.status)}`);
-  //           console.log(`Initiator: ${event.data.initiator.toBase58()}`);
-  //           if (isIncreasePrediction(event.data.prediction)) {
-  //             console.log("Prediction: Increase");
-  //           } else {
-  //             console.log("Prediction: Decrease");
-  //           }
-  //           console.log(`Initial Price: ${event.data.initialPrice}`);
-  //           console.log(`Entry Amount: ${event.data.entryAmount}`);
+      // Calculate price change
+      const priceChange = calculatePriceChange(currentPrice, initialPrice);
+      console.log(`Price change: ${priceChange.toFixed(4)}%`);
 
-  //           // Extract initial price from event
-  //           initialPrice = event.data.initialPrice;
+      // Determine if price is within joining limits
+      const isWithinLimits =
+        Math.abs(priceChange) <= CONSTANTS.MAX_JOIN_PRICE_MOVEMENT;
+      console.log(
+        `Price movement ${isWithinLimits ? "is" : "is not"} within ${
+          CONSTANTS.MAX_JOIN_PRICE_MOVEMENT
+        }% limit`
+      );
 
-  //           break;
-  //         case "gameJoined":
-  //           console.log("Game Joined Event", event.data);
-  //           console.log(`Game Created Logs: Game ID ${event.data.gameId}`);
-  //           console.log(`Status: ${formatGameStatus(event.data.status)}`);
-  //           console.log(`Challenger: ${event.data.challenger}`);
+      // Get initial token balance for challenger
+      const initialBalance = (
+        await getAccount(provider.connection, challengerTokenAccount)
+      ).amount;
 
-  //           if (isIncreasePrediction(event.data.challengerPrediction)) {
-  //             console.log("Challenger Prediction: Increase");
-  //           } else {
-  //             console.log("Challenger Prediction: Decrease");
-  //           }
-  //           break;
-  //         default:
-  //           console.warn("Unknown event", event);
-  //       }
-  //     }
+      // Attempt to join the game
+      const joinResult = await joinGame(
+        program,
+        provider,
+        gameId,
+        initiator.publicKey,
+        challenger,
+        challengerTokenAccount,
+        usdcMint,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
 
-  //     if (Number.isNaN(initialPrice)) {
-  //       throw new Error("No initial price set");
-  //     }
+      if (isWithinLimits) {
+        // If price is within limits, join should succeed
+        expect(joinResult.success).toBe(true);
+        console.log("Game joined successfully");
 
-  //     console.log(`Initial ETH/USD Price: ${initialPrice}`);
+        // Verify game state
+        const gameState = await program.account.gameState.fetch(
+          gameStateAddress
+        );
+        expect(gameState.challenger?.toString()).toBe(
+          challenger.publicKey.toString()
+        );
+        expect(gameState.startedAt).not.toBeNull();
+        expect(gameState.status).toHaveProperty("active");
 
-  //     // Get current price before joining
-  //     const [gameState] = findGameStatePDA(
-  //       program.programId,
-  //       initiator.publicKey,
-  //       gameId
-  //     );
+        // Verify tokens were transferred
+        const afterBalance = (
+          await getAccount(provider.connection, challengerTokenAccount)
+        ).amount;
+        const expectedBalance = initialBalance - BigInt(1000000000);
+        expect(afterBalance.toString()).toBe(expectedBalance.toString());
 
-  //     const currentPrice = initialPrice;
-  //     console.log(`Current ETH/USD Price: ${currentPrice}`);
+        // Check vault balance
+        const [vault] = findVaultPDA(
+          program.programId,
+          initiator.publicKey,
+          gameId
+        );
+        const vaultBalance = (await getAccount(provider.connection, vault))
+          .amount;
+        expect(vaultBalance.toString()).toBe("2000000000"); // 2000 USDC total
+      } else {
+        // If price exceeds limits, join should fail
+        expect(joinResult.success).toBe(false);
+        console.log("Game join correctly failed due to price movement");
 
-  //     // TODO: add a price fetch function to lib.rs to get newPrice for comparison
-  //     // Calculate price change
-  //     const priceChange: number =
-  //       initialPrice !== undefined
-  //         ? calculatePriceChange(initialPrice, newPrice)
-  //         : 0;
+        // Verify challenger's tokens were not deducted
+        const afterBalance = (
+          await getAccount(provider.connection, challengerTokenAccount)
+        ).amount;
+        expect(afterBalance.toString()).toBe(initialBalance.toString());
+      }
+    } catch (error: any) {
+      console.error("Error in join game test:", error);
+      throw error;
+    }
+  }, 30000);
 
-  //     // Check if can join based on price movement
-  //     const canJoin =
-  //       Math.abs(priceChange) <= CONSTANTS.MAX_JOIN_PRICE_MOVEMENT;
+  it("Challenger fails to join a game that doesn't exist", async () => {
+    try {
+      // Use a non-existent game ID
+      const nonExistentGameId = new anchor.BN(987654321);
 
-  //     // Calculate price movement percentage
-  //     const priceMovementPercent =
-  //       Math.abs((currentPrice - initialPrice) / initialPrice) * 100;
-  //     console.log(`Price movement: ${priceMovementPercent.toFixed(2)}%`);
+      // Get initial token balance
+      const initialBalance = (
+        await getAccount(provider.connection, challengerTokenAccount)
+      ).amount;
 
-  //     // Get initial token balance for challenger
-  //     const initialBalance = (
-  //       await getAccount(provider.connection, challengerTokenAccount)
-  //     ).amount;
+      // Attempt to join the non-existent game
+      const joinResult = await joinGame(
+        program,
+        provider,
+        nonExistentGameId,
+        initiator.publicKey,
+        challenger,
+        challengerTokenAccount,
+        usdcMint,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
 
-  //     // Check if price movement exceeds the maximum allowed
-  //     if (priceMovementPercent > CONSTANTS.MAX_JOIN_PRICE_MOVEMENT) {
-  //       console.log(
-  //         `Price movement exceeds ${CONSTANTS.MAX_JOIN_PRICE_MOVEMENT}%, join should fail`
-  //       );
+      // The join should fail
+      expect(joinResult.success).toBe(false);
+      console.log(
+        "Join correctly failed with error:",
+        joinResult.error.message
+      );
 
-  //       // Attempt to join and expect it to fail
-  //       try {
-  //         const txJoin = await program.methods
-  //           .joinGame(gameId, initiator.publicKey)
-  //           .accounts({
-  //             challenger: challenger.publicKey,
-  //             challengerTokenAccount,
-  //             usdcMint,
-  //             chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
-  //             chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
-  //           })
-  //           .signers([challenger])
-  //           .transaction();
+      // Verify token balance hasn't changed
+      const afterBalance = (
+        await getAccount(provider.connection, challengerTokenAccount)
+      ).amount;
+      expect(afterBalance.toString()).toBe(initialBalance.toString());
+    } catch (error: any) {
+      console.error("Unexpected error:", error);
+      throw error;
+    }
+  }, 30000);
 
-  //         await provider.sendAndConfirm(txJoin, [challenger]);
+  it("Initiator fails to withdraw from a game after a challenger has joined", async () => {
+    try {
+      // Create a new game with price increase prediction
+      const { gameId, initialPrice } = await createGame(
+        program,
+        provider,
+        initiator,
+        initiatorTokenAccount,
+        usdcMint,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
+        PredictionIncrease
+      );
 
-  //         // If we get here, the transaction succeeded which is unexpected
-  //         fail(
-  //           "Join transaction should have failed due to price movement exceeding limit"
-  //         );
-  //       } catch (error: any) {
-  //         // Expected outcome - transaction failed
-  //         console.log(
-  //           "Transaction correctly failed due to price movement exceeding limit"
-  //         );
-  //         expect(error).toBeDefined();
+      console.log(`Game created with ID: ${gameId.toString()}`);
+      console.log(`Initial price: ${initialPrice}`);
 
-  //         // Verify challenger's tokens were not deducted
-  //         const afterBalance = (
-  //           await getAccount(provider.connection, challengerTokenAccount)
-  //         ).amount;
-  //         expect(afterBalance.toString()).toBe(initialBalance.toString());
-  //       }
-  //     } else {
-  //       console.log(
-  //         `Price movement within ${CONSTANTS.MAX_JOIN_PRICE_MOVEMENT}%, join should succeed`
-  //       );
+      // Wait to allow for possible price movement
+      await sleep(2000);
 
-  //       // Challenger joins the game
-  //       const txJoin = await program.methods
-  //         .joinGame(gameId, initiator.publicKey)
-  //         .accounts({
-  //           challenger: challenger.publicKey,
-  //           challengerTokenAccount,
-  //           usdcMint,
-  //           chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
-  //           chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
-  //         })
-  //         .signers([challenger])
-  //         .transaction();
+      // Fetch current price to check if it's within limits
+      const currentPrice = await fetchCurrentPrice(
+        program,
+        provider,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
 
-  //       const txJoinSignature = await provider.sendAndConfirm(txJoin, [
-  //         challenger,
-  //       ]);
+      if (!initialPrice || !currentPrice) {
+        throw new Error("Failed to get price information");
+      }
 
-  //       // Verify transaction succeeded
-  //       const txJoinDetails = await provider.connection.getParsedTransaction(
-  //         txJoinSignature,
-  //         {
-  //           commitment: "confirmed",
-  //           maxSupportedTransactionVersion: 0,
-  //         }
-  //       );
+      const priceChange = calculatePriceChange(currentPrice, initialPrice);
+      const isWithinLimits =
+        Math.abs(priceChange) <= CONSTANTS.MAX_JOIN_PRICE_MOVEMENT;
 
-  //       // Parse logs to get join details
-  //       if (txJoinDetails?.meta?.logMessages) {
-  //         console.log("Game join succeeded as expected");
-  //         const eventParser = new EventParser(program.programId, program.coder);
-  //         const events = eventParser.parseLogs(txJoinDetails.meta.logMessages);
+      // If price movement exceeds limit, we can't proceed with this test
+      if (!isWithinLimits) {
+        console.log(
+          `Price change of ${priceChange.toFixed(4)}% exceeds limit of ${
+            CONSTANTS.MAX_JOIN_PRICE_MOVEMENT
+          }%`
+        );
+        console.log("Skipping test as we can't join the game");
+        return;
+      }
 
-  //         for (let event of events as any) {
-  //           if (event.name === "GameJoined") {
-  //             console.log(`Game Joined: Game ID ${event.data.gameId}`);
-  //             console.log(`Challenger: ${event.data.challenger}`);
+      // Join the game as challenger
+      const joinResult = await joinGame(
+        program,
+        provider,
+        gameId,
+        initiator.publicKey,
+        challenger,
+        challengerTokenAccount,
+        usdcMint,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
 
-  //             if ("increase" in event.data.challengerPrediction) {
-  //               console.log("Prediction: Increase");
-  //             } else {
-  //               console.log("Prediction: Decrease");
-  //             }
-  //           }
-  //         }
-  //       }
+      expect(joinResult.success).toBe(true);
+      console.log("Challenger joined game successfully");
 
-  //       // Verify game state
-  //       const gameStateAfterJoin = await program.account.gameState.fetch(
-  //         gameState
-  //       );
-  //       expect(gameStateAfterJoin.challenger).not.toBeNull();
+      // Get initial token balance for initiator
+      const initialBalance = (
+        await getAccount(provider.connection, initiatorTokenAccount)
+      ).amount;
 
-  //       if (gameStateAfterJoin.challenger) {
-  //         expect(gameStateAfterJoin.challenger.toString()).toBe(
-  //           challenger.publicKey.toString()
-  //         );
-  //       }
-  //       expect(gameStateAfterJoin.startedAt).not.toBeNull();
+      // Attempt to withdraw/cancel the game
+      const cancelResult = await cancelGame(
+        program,
+        provider,
+        gameId,
+        initiator,
+        initiatorTokenAccount,
+        usdcMint
+      );
 
-  //       // Check that tokens were transferred to vault
-  //       const [vault] = findVaultPDA(
-  //         program.programId,
-  //         initiator.publicKey,
-  //         gameId
-  //       );
-  //       const vaultBalance = (await getAccount(provider.connection, vault))
-  //         .amount;
-  //       expect(vaultBalance.toString()).toBe("2000000000"); // 2000 USDC total in vault
+      // The withdrawal should fail
+      expect(cancelResult.success).toBe(false);
+      console.log(
+        "Withdrawal correctly failed with error:",
+        cancelResult.error.message
+      );
 
-  //       // Check that challenger's tokens decreased
-  //       const afterBalance = (
-  //         await getAccount(provider.connection, challengerTokenAccount)
-  //       ).amount;
-  //       const expectedBalance = initialBalance - BigInt(1000000000);
-  //       expect(afterBalance.toString()).toBe(expectedBalance.toString());
-  //     }
+      // Verify initiator's token balance hasn't changed
+      const afterBalance = (
+        await getAccount(provider.connection, initiatorTokenAccount)
+      ).amount;
+      expect(afterBalance.toString()).toBe(initialBalance.toString());
 
-  //     console.log("Test completed successfully");
-  //   } catch (error: any) {
-  //     console.error("Test error:", error);
-  //     throw error;
-  //   }
-  // }, 30000);
+      // Verify game is still active
+      const [gameStateAddress] = findGameStatePDA(
+        program.programId,
+        initiator.publicKey,
+        gameId
+      );
+      const gameState = await program.account.gameState.fetch(gameStateAddress);
+      expect(gameState.status).toHaveProperty("active");
+    } catch (error: any) {
+      console.error("Error in withdraw after join test:", error);
+      throw error;
+    }
+  }, 30000);
 
-  // [TODO] - dependent on chainlink
-  // it("Prevents withdrawal after challenger joins", async () => {
-  //   try {
-  //     // Attempt to withdraw from game that has a challenger
-  //     await program.methods
-  //       .withdraw(GAME_ID_3)
-  //       .accounts({
-  //         initiator: initiator.publicKey,
-  //         initiatorTokenAccount,
-  //         usdcMint,
-  //       })
-  //       .signers([initiator])
-  //       .rpc();
+  it("Allows a player to close a game if price movement exceeds threshold", async () => {
+    try {
+      // Create a new game with price increase prediction
+      const { gameId, initialPrice } = await createGame(
+        program,
+        provider,
+        initiator,
+        initiatorTokenAccount,
+        usdcMint,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
+        PredictionIncrease
+      );
 
-  //     // We shouldn't reach this point
-  //     throw new Error(
-  //       "Should not have been able to withdraw after challenger joins"
-  //     );
-  //   } catch (error: any) {
-  //     console.log(
-  //       "Error as expected when trying to withdraw after challenger joins:",
-  //       error.message
-  //     );
-  //     expect(error.message).toContain("WithdrawalBlocked");
-  //   }
-  // }, 30000);
+      console.log(`Game created with ID: ${gameId.toString()}`);
+      console.log(`Initial price: ${initialPrice}`);
 
-  // [TODO] - dependent on chainlink
-  // it("Attempts to close the game", async () => {
-  //   try {
-  //     // Try to close the game - note: this may fail due to price threshold not being reached
-  //     await program.methods
-  //       .closeGame(GAME_ID_3, initiator.publicKey)
-  //       .accounts({
-  //         winner: initiator.publicKey, // assuming initiator is trying to claim win
-  //         winnerTokenAccount: initiatorTokenAccount,
-  //         usdcMint,
-  //         chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
-  //         chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
-  //       })
-  //       .signers([initiator])
-  //       .rpc();
+      // Wait to allow for possible price movement
+      await sleep(2000);
 
-  //     // If we got here, it worked (unlikely in normal circumstances)
-  //     console.log(
-  //       "Game closed successfully - price must have changed rapidly!"
-  //     );
+      // Fetch current price to check if it's within limits
+      const currentPrice = await fetchCurrentPrice(
+        program,
+        provider,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
 
-  //     // Verify game state
-  //     const gameStateAccount = await program.account.gameState.fetch(
-  //       gameState3
-  //     );
-  //     expect(gameStateAccount.endTimestamp).not.toBeNull();
-  //   } catch (error: any) {
-  //     // We expect this to fail with ThresholdNotReached
-  //     console.log("Game close failed as expected:", error.message);
-  //     expect(error.message).toContain("ThresholdNotReached");
-  //   }
-  // }, 30000);
+      if (!initialPrice || !currentPrice) {
+        throw new Error("Failed to get price information");
+      }
 
-  // [TODO] - dependent on chainlink
-  // it("Prevents withdrawal after game ends", async () => {
-  //   try {
-  //     // Attempt to withdraw from game that has ended
-  //     await program.methods
-  //       .withdraw(GAME_ID_3)
-  //       .accounts({
-  //         initiator: initiator.publicKey,
-  //         initiatorTokenAccount,
-  //         usdcMint,
-  //       })
-  //       .signers([initiator])
-  //       .rpc();
+      const priceChange = calculatePriceChange(currentPrice, initialPrice);
+      const isWithinLimits =
+        Math.abs(priceChange) <= CONSTANTS.MAX_JOIN_PRICE_MOVEMENT;
 
-  //     // We shouldn't reach this point
-  //     throw new Error(
-  //       "Should not have been able to withdraw after game has ended"
-  //     );
-  //   } catch (error: any) {
-  //     console.log(
-  //       "Error as expected when trying to withdraw after game has ended:",
-  //       error.message
-  //     );
-  //     expect(error.message).toContain("GameAlreadyEnded");
-  //   }
-  // }, 30000);
+      // If price movement exceeds limit, we can't proceed with this test
+      if (!isWithinLimits) {
+        console.log(
+          `Price change of ${priceChange.toFixed(4)}% exceeds limit of ${
+            CONSTANTS.MAX_JOIN_PRICE_MOVEMENT
+          }%`
+        );
+        console.log("Skipping test as we can't join the game");
+        return;
+      }
+
+      // Join the game as challenger
+      const joinResult = await joinGame(
+        program,
+        provider,
+        gameId,
+        initiator.publicKey,
+        challenger,
+        challengerTokenAccount,
+        usdcMint,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
+
+      expect(joinResult.success).toBe(true);
+      console.log("Challenger joined game successfully");
+
+      // Get initial token balance before closing
+      const initiatorInitialBalance = (
+        await getAccount(provider.connection, initiatorTokenAccount)
+      ).amount;
+
+      // Fetch current price to see if threshold is met
+      const priceBeforeClose = await fetchCurrentPrice(
+        program,
+        provider,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
+
+      if (!priceBeforeClose) {
+        throw new Error("Failed to get price before close");
+      }
+
+      console.log(`Price before close: ${priceBeforeClose}`);
+
+      // Calculate price change percentage
+      const priceChangeBeforeClose = calculatePriceChange(
+        priceBeforeClose,
+        initialPrice
+      );
+      console.log(`Price change: ${priceChange.toFixed(4)}%`);
+
+      // Check if price movement exceeds win threshold
+      const exceedsThreshold =
+        Math.abs(priceChangeBeforeClose) >= CONSTANTS.WIN_PRICE_THRESHOLD;
+      console.log(
+        `Price movement ${exceedsThreshold ? "exceeds" : "does not exceed"} ${
+          CONSTANTS.WIN_PRICE_THRESHOLD
+        }% threshold`
+      );
+
+      // Determine expected winner based on price movement
+      let expectedWinner: Keypair;
+      let expectedWinnerAccount: PublicKey;
+
+      if (priceChangeBeforeClose > 0) {
+        // Price increased, initiator should win (predicted increase)
+        expectedWinner = initiator;
+        expectedWinnerAccount = initiatorTokenAccount;
+        console.log("Expected winner: Initiator (price increased)");
+      } else {
+        // Price decreased, challenger should win (predicted decrease)
+        expectedWinner = challenger;
+        expectedWinnerAccount = challengerTokenAccount;
+        console.log("Expected winner: Challenger (price decreased)");
+      }
+
+      // Try to close the game
+      const closeResult = await closeGame(
+        program,
+        provider,
+        gameId,
+        initiator.publicKey,
+        expectedWinner,
+        expectedWinnerAccount,
+        usdcMint,
+        CONSTANTS.CHAINLINK_FEED_ADDRESS,
+        CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID
+      );
+
+      if (exceedsThreshold) {
+        // If threshold is met, close should succeed
+        expect(closeResult.success).toBe(true);
+        console.log(
+          "Game closed successfully, winner:",
+          expectedWinner.publicKey.toString().slice(0, 8) + "..."
+        );
+
+        // Verify game state
+        const [gameStateAddress] = findGameStatePDA(
+          program.programId,
+          initiator.publicKey,
+          gameId
+        );
+        const gameState = await program.account.gameState.fetch(
+          gameStateAddress
+        );
+        expect(gameState.status).toHaveProperty("complete");
+        expect(gameState.closedAt).not.toBeNull();
+
+        // Verify winner received funds (2000 USDC)
+        const winnerAfterBalance = (
+          await getAccount(provider.connection, expectedWinnerAccount)
+        ).amount;
+
+        if (expectedWinner.publicKey.equals(initiator.publicKey)) {
+          // If initiator won, they should have 2000 USDC more than initial
+          const expectedBalance = initiatorInitialBalance + BigInt(2000000000);
+          expect(winnerAfterBalance.toString()).toBe(
+            expectedBalance.toString()
+          );
+        } else {
+          // If challenger won, check they received funds
+          // We don't track challenger's initial balance here, so just verify they got something
+          const challengerPrevBalance = (
+            await getAccount(provider.connection, challengerTokenAccount)
+          ).amount;
+          expect(winnerAfterBalance).toBeGreaterThan(challengerPrevBalance);
+        }
+      } else {
+        // If threshold is not met, close should fail
+        expect(closeResult.success).toBe(false);
+        console.log(
+          "Game close correctly failed due to insufficient price movement"
+        );
+
+        // Verify game is still active
+        const [gameStateAddress] = findGameStatePDA(
+          program.programId,
+          initiator.publicKey,
+          gameId
+        );
+        const gameState = await program.account.gameState.fetch(
+          gameStateAddress
+        );
+        expect(gameState.status).toHaveProperty("active");
+      }
+    } catch (error: any) {
+      console.error("Error in close game test:", error);
+      throw error;
+    }
+  }, 30000);
 });
