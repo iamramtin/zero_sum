@@ -10,21 +10,28 @@ pub mod state;
 use crate::common::*;
 use crate::instructions::*;
 
-declare_id!("EZY9efvLY8yDhQEafvSrMxb9SR7FTQEEHrqHrxgWQeYA");
+declare_id!("4vFwvetVyScrRU5sYKrK2bGJxEpqQY8aaaGik2pCeRuG");
 
 #[program]
 pub mod zero_sum {
     use super::*;
 
-    /// Creates a new game and initializes game state.
+    /// Fetches the price data from Chainlink.
     ///
-    /// This is called by the first player (initiator), who also provides their prediction
-    /// on whether the price will increase or decrease.
-    ///
-    /// This function:
-    /// - Initializes the GameState account
-    /// - Stores the initiator’s prediction
-    /// - Sets initial game state
+    /// This function retrieves the current price from the Chainlink oracle feed.
+    pub fn fetch_price_from_chainlink(ctx: Context<FetchPrice>) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp;
+
+        // Get price data from Chainlink
+        get_chainlink_price(
+            &ctx.accounts.chainlink_program,
+            &ctx.accounts.chainlink_feed,
+            current_time,
+        )?;
+
+        Ok(())
+    }
+
     pub fn create_game(
         ctx: Context<CreateGame>,
         game_id: u64,

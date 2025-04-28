@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/zero_sum.json`.
  */
 export type ZeroSum = {
-  "address": "EZY9efvLY8yDhQEafvSrMxb9SR7FTQEEHrqHrxgWQeYA",
+  "address": "4vFwvetVyScrRU5sYKrK2bGJxEpqQY8aaaGik2pCeRuG",
   "metadata": {
     "name": "zeroSum",
     "version": "0.1.0",
@@ -251,17 +251,6 @@ export type ZeroSum = {
     },
     {
       "name": "createGame",
-      "docs": [
-        "Creates a new game and initializes game state.",
-        "",
-        "This is called by the first player (initiator), who also provides their prediction",
-        "on whether the price will increase or decrease.",
-        "",
-        "This function:",
-        "- Initializes the GameState account",
-        "- Stores the initiator’s prediction",
-        "- Sets initial game state"
-      ],
       "discriminator": [
         124,
         69,
@@ -496,6 +485,33 @@ export type ZeroSum = {
           "type": "pubkey"
         }
       ]
+    },
+    {
+      "name": "fetchPriceFromChainlink",
+      "docs": [
+        "Fetches the price data from Chainlink.",
+        "",
+        "This function retrieves the current price from the Chainlink oracle feed."
+      ],
+      "discriminator": [
+        207,
+        97,
+        77,
+        185,
+        63,
+        199,
+        101,
+        160
+      ],
+      "accounts": [
+        {
+          "name": "chainlinkFeed"
+        },
+        {
+          "name": "chainlinkProgram"
+        }
+      ],
+      "args": []
     },
     {
       "name": "joinGame",
