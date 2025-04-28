@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-zero_sum = "HyTwoM3vT59WKAcBKAQSu2zHh7vAoduS5tTL8Z1uLDdc"
+zero_sum = "EZY9efvLY8yDhQEafvSrMxb9SR7FTQEEHrqHrxgWQeYA"
 
 [programs.localnet]
 zero_sum = "7oB9z7BaKBYjVjRuW8rYzhW3U7VtBqArgZ8S537cHhCu"
