@@ -2,7 +2,7 @@
 
 import "react-toastify/dist/ReactToastify.css";
 import { CONSTANTS } from "../constants";
-import { PriceMonitorProps } from "../types";
+import { PriceMonitorProps } from "../types/components";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 

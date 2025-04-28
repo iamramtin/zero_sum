@@ -2,8 +2,8 @@
 
 import "react-toastify/dist/ReactToastify.css";
 import { CONSTANTS } from "../constants";
-import { GameStatisticsProps } from "../types";
-import { isActiveStatus, isPendingStatus } from "../utils/utils";
+import { GameStatisticsProps } from "../types/components";
+import { isActiveStatus } from "../utils/gameUtils";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 

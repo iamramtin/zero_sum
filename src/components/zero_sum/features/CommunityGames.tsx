@@ -1,23 +1,23 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
-import { CommunityGamesProps, GameState } from "../types";
-import { useZeroSumProgram } from "../zero_sum-data-access";
-import {
-  formatUnixTimestampBN,
-  isCompleteStatus,
-  isActiveStatus,
-  isDrawStatus,
-  getStatusText,
-} from "../utils/utils";
-
 import "@solana/wallet-adapter-react-ui/styles.css";
 import "react-toastify/dist/ReactToastify.css";
+import { useCallback, useMemo } from "react";
+import { useZeroSumProgram } from "../zero_sum-data-access";
 import { GameStatusTag } from "./components/GameStatusTag";
 import { PredictionBadge } from "./components/PredictionBadge";
 import { TableHeader } from "./components/TableHeader";
 import { EmptyGamesState } from "./components/EmptyGamesState";
 import { CommunityWinnerBadge } from "./components/WinnerBadge";
+import { CommunityGamesProps } from "../types/components";
+import { GameState } from "../types/game";
+import {
+  isActiveStatus,
+  isDrawStatus,
+  isCompleteStatus,
+  formatGameStatus,
+} from "../utils/gameUtils";
+import { formatUnixTimestampBN } from "../utils/timeUtils";
 
 // Number of community games to show
 const TOTAL_COMMUNITY_GAMES = 10;
@@ -245,7 +245,7 @@ export function CommunityGames({
             </div>
           </td>
           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-            {GameStatusTag(getStatusText(game.status))}
+            {GameStatusTag(formatGameStatus(game.status))}
           </td>
           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
             {startedAt ? startedAt.toLocaleString() : "-"}

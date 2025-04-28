@@ -9,11 +9,11 @@ import { GameStatistics } from "@/components/zero_sum/features/GameStatistics";
 import { OpenGames } from "@/components/zero_sum/features/OpenGames";
 import { PriceMonitor } from "@/components/zero_sum/features/PriceMonitor";
 import { UserGames } from "@/components/zero_sum/features/UserGames";
-import { PriceData } from "@/components/zero_sum/types";
 import { useChainlinkPriceFeed } from "@/components/zero_sum/hooks/useChainlinkPriceFeed";
 import { useZeroSumProgram } from "./zero_sum-data-access";
 import { CommunityGames } from "./features/CommunityGames";
-import { isPendingStatus } from "./utils/utils";
+import { PriceData } from "./types/price";
+import { isPendingStatus } from "./utils/gameUtils";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 
@@ -48,8 +48,13 @@ export default function ZeroSumGame(): JSX.Element {
 
   // Filter for games where the user is either the initiator or challenger
   const openGames = useMemo(
-    () => allGames.filter((game) => isPendingStatus(game.status)),
-    [allGames]
+    () =>
+      allGames.filter(
+        (game) =>
+          isPendingStatus(game.status) &&
+          game.initiator.toString() !== publicKey?.toString()
+      ),
+    [allGames, publicKey]
   );
 
   // Set initial price when first received
@@ -162,9 +167,6 @@ export default function ZeroSumGame(): JSX.Element {
             wallet. Make predictions on ETH price movements and earn USDC by
             being right!
           </p>
-          <button className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-200">
-            Connect Wallet
-          </button>
         </div>
       )}
 

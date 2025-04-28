@@ -2,21 +2,8 @@
 
 import BN from "bn.js";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { PublicKey } from "@solana/web3.js";
 import { CONSTANTS } from "../constants";
 import { useZeroSumProgram } from "../zero_sum-data-access";
-import { GameActionType, UserGamesProps, GameState } from "../types";
-import {
-  formatDuration,
-  formatUnixTimestampBN,
-  getStatusText,
-  getTimeRemaining,
-  getUserPrediction,
-  isDecreasePrediction,
-  isIncreasePrediction,
-  isCompleteStatus,
-  arePredictionsEqual,
-} from "../utils/utils";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 import "react-toastify/dist/ReactToastify.css";
@@ -26,6 +13,17 @@ import { ActionButton } from "./components/ActionButton";
 import { EmptyGamesState } from "./components/EmptyGamesState";
 import { TableHeader } from "./components/TableHeader";
 import { VictoryCelebration } from "./components/VictoryCelebration";
+import { UserGamesProps } from "../types/components";
+import { GameState } from "../types/game";
+import { GameActionType } from "../types/hooks";
+import { isCompleteStatus, formatGameStatus } from "../utils/gameUtils";
+import {
+  getUserPrediction,
+  isIncreasePrediction,
+  isDecreasePrediction,
+  arePredictionsEqual,
+} from "../utils/predictionUtils";
+import { formatDuration, formatUnixTimestampBN, getTimeRemaining } from "../utils/timeUtils";
 
 type LoadingStateType = Record<string, GameActionType>;
 
@@ -222,7 +220,7 @@ export function UserGames({
         : "hover:bg-gray-50";
 
       // Get the status text
-      const statusText = getStatusText(game.status);
+      const statusText = formatGameStatus(game.status);
 
       // Determine if the game is the one that was just won (for highlighting)
       const isRecentlyWon =

@@ -1,15 +1,5 @@
-import { PublicKey } from "@solana/web3.js";
-import BN from "bn.js";
 import { CONSTANTS } from "../../constants";
-import { GameState } from "../../types";
-
-// Join Button component
-interface JoinButtonProps {
-  game: GameState;
-  canJoin: boolean;
-  loadingState?: string;
-  onJoin: (gameId: BN, initiator: PublicKey) => Promise<void>;
-}
+import { JoinButtonProps } from "../../types/hooks";
 
 export const JoinButton = ({
   game,
@@ -31,7 +21,7 @@ export const JoinButton = ({
         {isJoining ? "Joining..." : game.closedAt ? "Joined" : "Join"}
       </button>
 
-      {(!canJoin) && (
+      {!canJoin && (
         <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
           Price movement
           {CONSTANTS.MAX_JOIN_PRICE_MOVEMENT < 0 ? " below " : " above "}

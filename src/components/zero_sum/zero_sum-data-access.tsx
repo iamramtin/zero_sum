@@ -1,16 +1,13 @@
 "use client";
 
 import BN from "bn.js";
-import {
-  ANCHOR_DISCRIMINATOR_SIZE,
-  getZeroSumProgram,
-  getZeroSumProgramId,
-} from "@project/anchor";
+import { getZeroSumProgram, getZeroSumProgramId } from "@project/anchor";
 import {
   useAnchorWallet,
   useConnection,
   useWallet,
 } from "@solana/wallet-adapter-react";
+import { EventParser } from "@coral-xyz/anchor";
 import { Cluster, PublicKey } from "@solana/web3.js";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
@@ -19,8 +16,15 @@ import { useAnchorProvider } from "../solana/solana-provider";
 import { useTransactionToast } from "../ui/ui-layout";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { toast } from "react-toastify";
-import { PriceData } from "./types";
-import { CONSTANTS } from "./constants";
+import { PriceData } from "@/components/zero_sum/types/price";
+import { CONSTANTS } from "@/components/zero_sum/constants";
+import {
+  handlePriceFetched,
+  handlePriceChanged,
+  handleGameCreated,
+  handleGameClosed,
+  handleGameJoined,
+} from "./utils/eventUtils";
 
 /**
  * Type for price prediction direction
@@ -107,6 +111,43 @@ export function useZeroSumProgram(priceData: PriceData | null) {
     queryFn: () => connection.getParsedAccountInfo(programId),
   });
 
+  const eventParser = new EventParser(program.programId, program.coder);
+
+  function handleTransactionEvents(logMessages: string[] | null | undefined) {
+    if (logMessages == null || logMessages == undefined) return;
+
+    const events = eventParser.parseLogs(logMessages);
+
+    for (const event of events) {
+      console.log("event.name", event.name);
+
+      switch (event.name) {
+        case "priceFetched":
+          console.log("Price Fetched Event", event.data);
+          handlePriceFetched(event.data);
+          break;
+        case "priceChanged":
+          console.log("Price Changed Event", event.data);
+          handlePriceChanged(event.data);
+          break;
+        case "gameCreated":
+          console.log("Game Created Event", event.data);
+          handleGameCreated(event.data);
+          break;
+        case "gameJoined":
+          console.log("Game Joined Event", event.data);
+          handleGameJoined(event.data);
+          break;
+        case "gameClosed":
+          console.log("Game Closed Event", event.data);
+          handleGameClosed(event.data)
+          break;
+        default:
+          console.warn("Unknown event", event);
+      }
+    }
+  }
+
   // Calculate price change percentage
   const calculatePriceChange = useCallback(
     (currentPrice: number, basePrice: number): number => {
@@ -164,10 +205,22 @@ export function useZeroSumProgram(priceData: PriceData | null) {
             chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
             chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
           })
-          .rpc();
+          .transaction();
+
+        const txSignature = await provider.sendAndConfirm(tx, []);
+
+        const txDetails = await provider.connection.getParsedTransaction(
+          txSignature,
+          {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+          }
+        );
+
+        handleTransactionEvents(txDetails?.meta?.logMessages);
 
         console.log("New game created with signature:", tx);
-        return tx;
+        return txSignature;
       } catch (error: any) {
         toast.error("Unable to create game");
         if (error.logs) {
@@ -231,14 +284,26 @@ export function useZeroSumProgram(priceData: PriceData | null) {
             chainlinkFeed: CONSTANTS.CHAINLINK_FEED_ADDRESS,
             chainlinkProgram: CONSTANTS.CHAINLINK_ONCHAIN_PROGRAM_ID,
           })
-          .rpc();
+          .transaction();
+
+        const txSignature = await provider.sendAndConfirm(tx, []);
+
+        const txDetails = await provider.connection.getParsedTransaction(
+          txSignature,
+          {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+          }
+        );
+
+        handleTransactionEvents(txDetails?.meta?.logMessages);
 
         console.log(
           `Game with ID ${gameId} joined by ${publicKey} with signature:`,
           tx
         );
 
-        return tx;
+        return txSignature;
       } catch (error: any) {
         console.error("Error joining game:", error);
         if (error.logs) {
@@ -295,22 +360,7 @@ export function useZeroSumProgram(priceData: PriceData | null) {
           }
         );
 
-        if (txDetails?.meta?.logMessages) {
-          for (const log of txDetails.meta.logMessages) {
-            if (log.startsWith("Program log: Program data: ")) {
-              const base64Data = log.replace("Program log: Program data: ", "");
-              const event = program.coder.events.decode(
-                Buffer.from(base64Data, "base64").toString()
-              );
-              console.log("Anchor Event:", event);
-            }
-          }
-        }
-
-        if (txDetails?.meta?.logMessages) {
-          console.log("Program Logs:");
-          txDetails.meta.logMessages.forEach((log) => console.log(log));
-        }
+        handleTransactionEvents(txDetails?.meta?.logMessages);
 
         console.log(`Game with ID ${gameId} closed with signature:`, tx);
         return txSignature;
@@ -379,10 +429,22 @@ export function useZeroSumProgram(priceData: PriceData | null) {
             challengerTokenAccount: challengerTokenAccount.value[0].pubkey,
             usdcMint: CONSTANTS.USDC_MINT,
           })
-          .rpc();
+          .transaction();
+
+        const txSignature = await provider.sendAndConfirm(tx, []);
+
+        const txDetails = await provider.connection.getParsedTransaction(
+          txSignature,
+          {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+          }
+        );
+
+        handleTransactionEvents(txDetails?.meta?.logMessages);
 
         console.log(`Game with ID ${gameId} drawn with signature:`, tx);
-        return tx;
+        return txSignature;
       } catch (error: any) {
         console.error("Error ending game:", error);
         if (error.logs) {
@@ -422,10 +484,22 @@ export function useZeroSumProgram(priceData: PriceData | null) {
             initiatorTokenAccount: initiatorTokenAccount.value[0].pubkey,
             usdcMint: CONSTANTS.USDC_MINT,
           })
-          .rpc();
+          .transaction();
+
+        const txSignature = await provider.sendAndConfirm(tx, []);
+
+        const txDetails = await provider.connection.getParsedTransaction(
+          txSignature,
+          {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+          }
+        );
+
+        handleTransactionEvents(txDetails?.meta?.logMessages);
 
         console.log(`Game with ID ${gameId} cancelled with signature:`, tx);
-        return tx;
+        return txSignature;
       } catch (error: any) {
         console.error("Error cancelling game:", error);
         if (error.logs) {

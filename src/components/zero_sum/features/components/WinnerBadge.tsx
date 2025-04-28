@@ -1,5 +1,6 @@
-import { GameState, PricePrediction } from "../../types";
-import { isCompleteStatus, arePredictionsEqual } from "../../utils/utils";
+import { GameState, PricePrediction } from "../../types/game";
+import { isCompleteStatus } from "../../utils/gameUtils";
+import { arePredictionsEqual } from "../../utils/predictionUtils";
 
 /**
  * Winner badge component that determines the winner based on the game's winning prediction

@@ -3,15 +3,16 @@
 import "react-toastify/dist/ReactToastify.css";
 import BN from "bn.js";
 import { CONSTANTS } from "../constants";
-import { GameState, OpenGamesProps } from "../types";
 import { useZeroSumProgram } from "../zero_sum-data-access";
 import { PublicKey } from "@solana/web3.js";
 import { useCallback, useMemo, useState } from "react";
-import { formatUnixTimestampBN } from "../utils/utils";
 import { EmptyGamesState } from "./components/EmptyGamesState";
 import { PredictionBadge } from "./components/PredictionBadge";
 import { TableHeader } from "./components/TableHeader";
 import { JoinButton } from "./components/JoinButton";
+import { OpenGamesProps } from "../types/components";
+import { GameState } from "../types/game";
+import { formatUnixTimestampBN } from "../utils/timeUtils";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 

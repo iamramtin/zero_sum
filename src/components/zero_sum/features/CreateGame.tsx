@@ -6,12 +6,8 @@ import { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useZeroSumProgram } from "@/components/zero_sum/zero_sum-data-access";
 import { CONSTANTS } from "../constants";
-import {
-  CreateGameProps,
-  PricePrediction,
-  PredictionIncrease,
-  PredictionDecrease,
-} from "../types";
+import { CreateGameProps } from "../types/components";
+import { PricePrediction, PredictionIncrease, PredictionDecrease } from "../types/game";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 

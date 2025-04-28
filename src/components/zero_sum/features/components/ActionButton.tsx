@@ -1,14 +1,13 @@
 import { PublicKey } from "@solana/web3.js";
-import BN from "bn.js";
-import { GameState } from "../../types";
-import { GameActionType } from "../../types";
+import { GameState } from "../../types/game";
+import { GameActionType } from "../../types/hooks";
 import {
   isCompleteStatus,
   isActiveStatus,
   isCancelledStatus,
   isPendingStatus,
   isDrawStatus,
-} from "../../utils/utils";
+} from "../../utils/gameUtils";
 
 // Type definitions for component props
 interface ActionButtonProps {
@@ -16,10 +15,7 @@ interface ActionButtonProps {
   isWinning: boolean;
   timeRemaining: number | null;
   publicKey: PublicKey | null;
-  onAction: (
-    action: GameActionType,
-    game: GameState,
-  ) => Promise<void>;
+  onAction: (action: GameActionType, game: GameState) => Promise<void>;
   loadingState: string | undefined;
 }
 

@@ -15,7 +15,7 @@ In Zero Sum, two players compete by predicting whether the ETH price will increa
 
 - **Fair Entry System**: Second player can only join if ETH price hasn't moved more than 1% from game creation
 - **Withdrawal Protection**: Initiator can withdraw funds only before someone joins
-- **Dispute Resolution**: Automatic draw option after 24 hr timeout
+- **Dispute Resolution**: Automatic draw option after 30 min timeout
 - **On-chain Verification**: Winner verification and fund transfers secured by Solana blockchain
 - **Real-time Updates**: Live price feeds and game status
 

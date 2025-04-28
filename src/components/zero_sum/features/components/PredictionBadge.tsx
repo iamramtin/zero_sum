@@ -1,5 +1,5 @@
-import { PricePrediction } from "scripts/seed";
-import { isIncreasePrediction } from "../../utils/utils";
+import { PricePrediction } from "../../types/game";
+import { isIncreasePrediction } from "../../utils/predictionUtils";
 
 export const PredictionBadge = ({
   prediction,
