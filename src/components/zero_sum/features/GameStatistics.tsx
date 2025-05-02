@@ -11,16 +11,18 @@ require("@solana/wallet-adapter-react-ui/styles.css");
  * Component to display game statistics and summary
  */
 export function GameStatistics({
+  allGames,
   userGames,
-  openGames,
   priceData,
 }: GameStatisticsProps): JSX.Element {
   // Calculate total games created
-  const totalGames = userGames.length + openGames.length;
+  const totalGames = allGames.length;
+  const totalActiveGames = allGames.filter((game) =>
+    isActiveStatus(game.status)
+  ).length;
 
   // Calculate total USDC at stake
-  const totalStaked =
-    (userGames.length + openGames.length) * CONSTANTS.ENTRY_AMOUNT;
+  const totalStaked = totalGames * CONSTANTS.ENTRY_AMOUNT;
 
   // Count user's active games (with a challenger)
   const activeGames = userGames.filter((game) =>
@@ -80,8 +82,10 @@ export function GameStatistics({
               </svg>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Total Games</p>
-              <p className="text-lg font-bold">{totalGames}</p>
+              <p className="text-sm text-gray-500">Total Active Games</p>
+              <p className="text-lg font-bold">
+                {totalActiveGames} / {totalGames}
+              </p>
             </div>
           </div>
         </div>

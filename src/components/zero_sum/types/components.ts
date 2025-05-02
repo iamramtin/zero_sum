@@ -34,7 +34,7 @@ export interface CommunityGamesProps {
 }
 
 export interface GameStatisticsProps {
+  allGames: GameState[];
   userGames: GameState[];
-  openGames: GameState[];
   priceData: PriceData | null;
 }

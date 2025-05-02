@@ -90,8 +90,8 @@ export default function ZeroSumGame(): JSX.Element {
 
       {connected && (
         <GameStatistics
+          allGames={allGames}
           userGames={userGames}
-          openGames={openGames}
           priceData={priceData}
         />
       )}
